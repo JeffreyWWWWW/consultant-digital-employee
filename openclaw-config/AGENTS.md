@@ -63,12 +63,87 @@ Use runtime-provided startup context first.
 附：📋 生成说明（参考方案、匹配产品、引用政策数、来源占比）
 ```
 
-### Step 3: 输出交付
+### Step 3: 输出为 Word 文档并通过企微发送文件
 
-生成完毕后告知：
-- 参考了哪些来源（历史方案/政策/产品）
-- 哪些地方需要人工重点审核
-- 哪些信息需要补充确认
+**必须输出 .docx 文件，禁止直接在对话中贴方案全文或输出 .md 文件。**
+
+#### 3.1 组装 JSON 数据
+
+将方案各章节内容按以下结构组装为 JSON：
+
+```json
+{
+  "project_name": "项目名称",
+  "customer_name": "客户单位",
+  "customer_type": "客户类型",
+  "region": "区域",
+  "sections": {
+    "policy_background": "政策背景正文（多段用\\n分隔）",
+    "current_status": "现状概述",
+    "pain_points": ["痛点1", "痛点2", "痛点3"],
+    "overall_goal": "总体目标",
+    "sub_goals": ["目标1", "目标2"],
+    "modules": [{"name": "模块名", "content": "内容", "product": "匹配产品"}],
+    "architecture": "技术架构描述",
+    "tech_selection": "技术选型",
+    "phases": [{"name": "一期", "duration": "6个月", "content": "内容", "deliverables": "交付物"}],
+    "budget_items": [{"name": "模块", "amount": "待定", "note": ""}],
+    "highlights": ["亮点1", "亮点2"],
+    "benefits": ["效益1", "效益2"],
+    "cases": [{"name": "案例名", "source": "来源", "summary": "摘要"}],
+    "review_notes": ["审核项1", "审核项2"],
+    "ref_proposals": "参考方案",
+    "ref_products": "匹配产品",
+    "ref_policies_count": 0,
+    "ref_cases_count": 0,
+    "source_ratio": "来源占比"
+  }
+}
+```
+
+#### 3.2 调用脚本生成 .docx
+
+将 JSON 保存为临时文件，然后执行：
+
+```bash
+python ~/.openclaw/workspace/skills/zhuofan-proposal-generator/scripts/generate_docx.py \
+  --json /tmp/proposal_data.json \
+  --output ~/.openclaw/workspace/output/ZX01_{区域}_{项目简称}_解决方案_初稿_{日期}.docx
+```
+
+文件命名规范：`ZX01_{区域}_{项目简称}_解决方案_初稿_{YYYYMMDD}.docx`
+
+#### 3.3 通过企微发送文件给用户
+
+生成 .docx 后，将文件发送给用户。文件路径交给企微通道自动处理。
+
+#### 3.4 发送简短交付说明（对话文字）
+
+文件发送后，在对话中附上简短说明（不要贴方案全文）：
+
+```
+方案初稿已生成，请查收文件。
+
+参考来源：
+- 匹配产品：{产品列表}
+- 引用政策：{N}条（正文中已标注来源）
+- 参考案例：{N}个
+
+需要人工重点审核：
+- 政策引用原文请核对
+- 产品匹配请与产品部门确认
+- 预算金额需填写
+- 方案创新点建议人工设计
+
+如需调整，直接告诉我。
+```
+
+#### 重要规则
+
+- **禁止输出 .md 文件** — 所有方案必须输出为 .docx
+- **禁止在对话中贴方案全文** — 全文在 .docx 文件中
+- **必须发送文件** — 不能只说"已生成在某路径"，要把文件发给用户
+- **如果 python-docx 不可用** — 先尝试 `pip install python-docx`，仍失败则降级为 .md 并告知用户
 
 ## 提示词技巧（来自资深顾问经验沉淀）
 
