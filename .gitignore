@@ -3,3 +3,4 @@
 
 # OpenClaw runtime data
 .openclaw/
+__pycache__/
