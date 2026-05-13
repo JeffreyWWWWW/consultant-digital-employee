@@ -57,10 +57,10 @@ Use runtime-provided startup context first.
 七、亮点与预期效益
   7.1 方案亮点 — 3-5个
   7.2 预期效益 — 量化指标
-  7.3 成功案例 — 标注来源
+  7.3 成功案例 — 标注来源链接；无法核验时标注待联网核验
 
 附：⚠️ 人工审核提示（政策/产品/预算/创新点需人工确认）
-附：📋 生成说明（参考方案、匹配产品、引用政策数、来源占比）
+附：📋 生成说明（参考方案、匹配产品、引用政策数、来源清单）
 ```
 
 ### Step 3: 输出为 Word 文档并通过企微发送文件
@@ -90,13 +90,21 @@ Use runtime-provided startup context first.
     "budget_items": [{"name": "模块", "amount": "待定", "note": ""}],
     "highlights": ["亮点1", "亮点2"],
     "benefits": ["效益1", "效益2"],
-    "cases": [{"name": "案例名", "source": "来源", "summary": "摘要"}],
+    "cases": [{"name": "案例名", "source": "来源", "url": "来源链接", "status": "已核验/待核验原文", "summary": "摘要"}],
     "review_notes": ["审核项1", "审核项2"],
     "ref_proposals": "参考方案",
     "ref_products": "匹配产品",
+    "policy_search_status": "成功/部分成功/失败降级",
+    "policy_search_note": "政策检索说明",
+    "policy_sources": [
+      {"name": "政策名称", "issuer": "发文单位", "date": "发文时间", "url": "来源链接", "status": "已核验/待核验原文"}
+    ],
+    "industry_sources": [
+      {"name": "行业资料名称", "issuer": "发布单位", "date": "发布时间", "url": "来源链接", "status": "已核验/待核验原文"}
+    ],
     "ref_policies_count": 0,
     "ref_cases_count": 0,
-    "source_ratio": "来源占比"
+    "source_note": "政策来源、行业资料、案例来源详见来源清单；其余内容为模型辅助生成，需人工审核确认。"
   }
 }
 ```
@@ -126,7 +134,7 @@ python ~/.openclaw/workspace/skills/zhuofan-proposal-generator/scripts/generate_
 
 参考来源：
 - 匹配产品：{产品列表}
-- 引用政策：{N}条（正文中已标注来源）
+- 引用政策：{N}条（来源详见“附录C：来源清单”）
 - 参考案例：{N}个
 
 需要人工重点审核：

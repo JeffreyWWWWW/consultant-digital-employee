@@ -13,6 +13,8 @@ import json
 import sys
 import os
 import argparse
+import re
+import time
 from datetime import date
 
 try:
@@ -20,7 +22,6 @@ try:
     from docx.shared import Pt, Cm, RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
     from docx.enum.table import WD_TABLE_ALIGNMENT
-    from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
 except ImportError:
     print("ERROR: python-docx 未安装，请执行 pip install python-docx", file=sys.stderr)
@@ -58,7 +59,7 @@ SCHEMA = """
     "highlights": ["亮点1", "亮点2"],
     "benefits": ["效益1", "效益2"],
     "cases": [
-      {"name": "案例名", "source": "来源", "summary": "摘要"}
+      {"name": "案例名", "source": "来源", "url": "来源链接", "status": "已核验/待核验原文", "summary": "摘要"}
     ],
     "review_notes": ["需人工审核项1", "需人工审核项2"],
     "ref_proposals": "参考的历史方案",
@@ -68,9 +69,12 @@ SCHEMA = """
     "policy_sources": [
       {"name": "政策名称", "issuer": "发文单位", "date": "发文时间", "url": "来源链接", "status": "已核验/待核验原文"}
     ],
+    "industry_sources": [
+      {"name": "行业资料名称", "issuer": "发布单位", "date": "发布时间", "url": "来源链接", "status": "已核验/待核验原文"}
+    ],
     "ref_policies_count": 0,
     "ref_cases_count": 0,
-    "source_ratio": "知识库 30% / 政策库 20% / 模型生成 50%"
+    "source_note": "政策来源、行业资料、案例来源详见来源清单；其余内容为模型辅助生成，需人工审核确认。"
   }
 }
 """
@@ -114,6 +118,7 @@ def _set_paragraph_format(p, first_line_indent: bool = True, space_before: int =
     p.paragraph_format.space_before = Pt(space_before)
     p.paragraph_format.space_after = Pt(space_after)
 
+
 def _set_cell_shading(cell, color_hex: str):
     tc_pr = cell._element.get_or_add_tcPr()
     shading = tc_pr.makeelement(
@@ -137,10 +142,20 @@ def _heading(doc, text, level):
     return p
 
 
+def _strip_inline_sources(text: str) -> str:
+    """正文不内嵌来源链接，来源统一放入附录来源清单。"""
+    if not text:
+        return ""
+    text = re.sub(r"\s*[\[【]来源[:：][^\]】]+[\]】]", "", text)
+    text = re.sub(r"\s*[（(]来源[:：][^）)]+[）)]", "", text)
+    text = re.sub(r"\s*https?://\S+", "", text)
+    return text.strip()
+
+
 def _add_paragraphs(doc, text: str):
     """将含 \\n 的长文本拆成多段落写入"""
     for line in text.split("\n"):
-        line = line.strip()
+        line = _strip_inline_sources(line.strip())
         if line:
             p = doc.add_paragraph()
             _set_paragraph_format(p)
@@ -169,21 +184,6 @@ def _format_table(table):
                     _set_run_font(r, FONT_FANGSONG, 16, bool(r.bold), r.font.color.rgb)
 
 
-def _add_red_separator(doc):
-    p = doc.add_paragraph()
-    p.paragraph_format.space_before = Pt(4)
-    p.paragraph_format.space_after = Pt(24)
-    p_pr = p._p.get_or_add_pPr()
-    p_bdr = OxmlElement("w:pBdr")
-    bottom = OxmlElement("w:bottom")
-    bottom.set(qn("w:val"), "single")
-    bottom.set(qn("w:sz"), "12")
-    bottom.set(qn("w:space"), "1")
-    bottom.set(qn("w:color"), "FF0000")
-    p_bdr.append(bottom)
-    p_pr.append(p_bdr)
-
-
 def _subheading(index: int, text: str) -> str:
     prefix = CN_SUBHEADINGS[index - 1] if index <= len(CN_SUBHEADINGS) else f"（{index}）"
     return f"{prefix}{text}"
@@ -194,16 +194,71 @@ def _enforce_policy_traceability(sections: dict):
     policy_background = sections.get("policy_background", "")
     policy_sources = sections.get("policy_sources") or []
     ref_policies_count = sections.get("ref_policies_count", 0) or 0
-    has_policy_claims = "《" in policy_background or int(ref_policies_count) > 0
+    ref_count_match = re.search(r"\d+", str(ref_policies_count))
+    ref_count = int(ref_count_match.group()) if ref_count_match else 0
+    has_policy_claims = "《" in policy_background or ref_count > 0
 
     if has_policy_claims and not policy_sources:
         sections["policy_search_status"] = "失败降级"
         sections["policy_search_note"] = (
             "正文包含政策引用，但生成数据未提供可核验来源链接，已按待联网核验处理。"
         )
+        sections["ref_policies_count"] = 0
         warning = "政策来源链接未随生成数据提供，以上政策引用需进一步联网核验。[待联网核验]"
         if "待联网核验" not in policy_background:
             sections["policy_background"] = f"{policy_background}\n\n{warning}".strip()
+
+
+def _enforce_case_traceability(sections: dict):
+    """成功案例没有来源链接时，自动标注为待联网核验。"""
+    cases = sections.get("cases") or []
+    for case in cases:
+        if not isinstance(case, dict):
+            continue
+        url = (case.get("url") or "").strip()
+        source = (case.get("source") or "").strip()
+        has_link = url.startswith(("http://", "https://")) or "http://" in source or "https://" in source
+        if has_link:
+            continue
+        case["status"] = case.get("status") or "待核验原文"
+        case["url"] = "来源链接未提供，需联网核验。[待联网核验]"
+        case["source"] = source or "公开信息/行业案例"
+
+
+def _source_heading(item: dict) -> str:
+    return item.get("name") or item.get("title") or item.get("source") or "未命名来源"
+
+
+def _source_fields(item: dict, issuer_label: str = "发布单位"):
+    return [
+        (issuer_label, item.get("issuer") or item.get("source") or ""),
+        ("时间", item.get("date", "")),
+        ("状态", item.get("status", "")),
+        ("来源链接", item.get("url", "")),
+    ]
+
+
+def _add_source_list(doc, title: str, items: list, issuer_label: str = "发布单位"):
+    if not items:
+        return
+    _heading(doc, title, 2)
+    for i, item in enumerate(items, 1):
+        if not isinstance(item, dict):
+            continue
+        p = doc.add_paragraph()
+        _set_paragraph_format(p, first_line_indent=False)
+        run = p.add_run(f"{i}. {_source_heading(item)}")
+        _set_run_font(run, FONT_HEITI, 16, True)
+
+        for label, value in _source_fields(item, issuer_label):
+            if not value:
+                continue
+            p = doc.add_paragraph()
+            _set_paragraph_format(p)
+            label_run = p.add_run(f"{label}：")
+            _set_run_font(label_run, FONT_HEITI, 16, True)
+            value_run = p.add_run(value)
+            _set_run_font(value_run, FONT_FANGSONG, 16)
 
 
 # ── 主函数 ────────────────────────────────────────────────
@@ -215,6 +270,7 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
     region = data["region"]
     s = data.get("sections", {})
     _enforce_policy_traceability(s)
+    _enforce_case_traceability(s)
 
     doc = Document()
     _setup_official_page(doc)
@@ -227,17 +283,10 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
     style.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
 
     # ───── 封面 ─────
-    issuer_p = doc.add_paragraph()
-    issuer_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    _set_paragraph_format(issuer_p, first_line_indent=False, space_after=8)
-    run = issuer_p.add_run("卓繁信息集团股份有限公司")
-    _set_run_font(run, FONT_XIAOBIAOSONG, 26, True, RGBColor(0xFF, 0x00, 0x00))
-    _add_red_separator(doc)
-
     title_p = doc.add_paragraph()
     title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     _set_paragraph_format(title_p, first_line_indent=False, space_after=8)
-    run = title_p.add_run(f"《{project_name}》解决方案")
+    run = title_p.add_run(f"《{project_name}》\n解决方案")
     _set_run_font(run, FONT_XIAOBIAOSONG, 22, True)
 
     sub_p = doc.add_paragraph()
@@ -417,12 +466,8 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
             if case.get("summary"):
                 p = doc.add_paragraph()
                 _set_paragraph_format(p)
-                run = p.add_run(case["summary"])
+                run = p.add_run(_strip_inline_sources(case["summary"]))
                 _set_run_font(run, FONT_FANGSONG, 16)
-            src_p = doc.add_paragraph()
-            _set_paragraph_format(src_p)
-            run = src_p.add_run(f"[来源] {case.get('source', '知识库')}")
-            _set_run_font(run, FONT_FANGSONG, 16)
     else:
         p = doc.add_paragraph()
         _set_paragraph_format(p)
@@ -459,7 +504,7 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
         ("政策检索说明", s.get("policy_search_note", "未说明")),
         ("引用政策数量", f"{s.get('ref_policies_count', 0)} 条"),
         ("引用案例数量", f"{s.get('ref_cases_count', 0)} 个"),
-        ("内容来源占比", s.get("source_ratio", "模型生成 100%（知识库未接入）")),
+        ("内容来源说明", s.get("source_note", "政策来源、行业资料、案例来源详见来源清单；其余内容为模型辅助生成，需人工审核确认。")),
     ]
     for i, (k, v) in enumerate(info_data):
         info_t.rows[i].cells[0].text = k
@@ -469,19 +514,15 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
                 _set_run_font(r, FONT_HEITI, 16, True)
     _format_table(info_t)
 
-    policy_sources = s.get("policy_sources", [])
-    if policy_sources:
-        _heading(doc, "政策来源链接", 2)
-        src_t = doc.add_table(rows=len(policy_sources) + 1, cols=5)
-        _format_table(src_t)
-        _make_header_row(src_t, ["政策名称", "发文单位", "时间", "状态", "来源链接"])
-        for i, item in enumerate(policy_sources, 1):
-            src_t.rows[i].cells[0].text = item.get("name", "")
-            src_t.rows[i].cells[1].text = item.get("issuer", "")
-            src_t.rows[i].cells[2].text = item.get("date", "")
-            src_t.rows[i].cells[3].text = item.get("status", "")
-            src_t.rows[i].cells[4].text = item.get("url", "")
-        _format_table(src_t)
+    source_groups = [
+        ("政策来源", s.get("policy_sources", []), "发文单位"),
+        ("行业资料来源", s.get("industry_sources", []), "发布单位"),
+        ("案例来源", s.get("cases", []), "来源"),
+    ]
+    if any(items for _, items, _ in source_groups):
+        _heading(doc, "附录C：来源清单", 1)
+        for title, items, issuer_label in source_groups:
+            _add_source_list(doc, title, items, issuer_label)
 
     disclaimer = doc.add_paragraph()
     _set_paragraph_format(disclaimer, space_before=12)
@@ -504,6 +545,7 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
 # ── CLI 入口 ──────────────────────────────────────────────
 
 def main():
+    start_time = time.perf_counter()
     parser = argparse.ArgumentParser(description="ZX-01 方案初稿 Word 生成器")
     parser.add_argument("--json", default=None, help="输入 JSON 文件路径")
     parser.add_argument("--output", default=None, help="输出 .docx 路径（可选）")
@@ -521,7 +563,9 @@ def main():
         data = json.load(f)
 
     path = build_proposal_docx(data, args.output)
+    elapsed = time.perf_counter() - start_time
     print(path)
+    print(f"generated_in_seconds={elapsed:.2f}")
 
 
 if __name__ == "__main__":
