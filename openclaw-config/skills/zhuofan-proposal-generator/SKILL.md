@@ -10,6 +10,20 @@ description: |-
 
 基于用户需求，自动生成符合卓繁信息集团标准的解决方案初稿。定位是「建议型初稿」——供顾问修改完善，不替代核心方案决策。
 
+## 与 official-doc-writer 协同规则
+
+本 Skill 负责「方案内容生成」：需求解析、方案结构、业务逻辑、政策/产品/案例引用、人工审核提示。
+
+`official-doc-writer` 负责「公文格式参考」：Word 版面、字体字号、标题层级、正文缩进、页边距等，生成 `.docx` 时必须优先参考其 GB/T 9704-2012 公文格式规范。
+
+协同方式：
+
+- 当用户要求生成数字政府方案、项目方案、汇报方案、解决方案初稿时，优先激活本 Skill。
+- 本 Skill 不把任务转交给 `official-doc-writer` 重新写内容，避免七章方案结构被改写为普通通知/报告/函。
+- 在生成 Word 文档时，使用本 Skill 的 `scripts/generate_docx.py`，该脚本已按 `official-doc-writer` 的公文版式规则设置页面、字体和标题层级。
+- 如需确认具体公文格式要求，可查阅 `../official-doc-writer/references/GBT_9704-2012_党政机关公文格式.md`。
+- 如果用户明确要求“正式公文”“通知/报告/请示/函”等法定公文，而不是方案初稿，则应使用 `official-doc-writer`。
+
 ## 触发条件
 
 以下任一情况时激活此 Skill：
@@ -176,7 +190,7 @@ description: |-
 #### 生成流程
 
 1. 将方案各章节内容组装为 JSON 结构
-2. 调用 `scripts/generate_docx.py` 脚本生成 Word 文件
+2. 调用 `scripts/generate_docx.py` 脚本生成 Word 文件，版式参考 `official-doc-writer` 公文格式
 3. 将 .docx 文件发送给用户
 4. 在对话中只发送简要的交付说明（不贴方案全文）
 
