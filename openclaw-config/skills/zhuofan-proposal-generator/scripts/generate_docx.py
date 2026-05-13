@@ -18,7 +18,7 @@ from datetime import date
 try:
     from docx import Document
     from docx.shared import Pt, Cm, RGBColor
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
     from docx.enum.table import WD_TABLE_ALIGNMENT
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
@@ -76,6 +76,7 @@ FONT_FANGSONG = "仿宋_GB2312"
 FONT_HEITI = "黑体"
 FONT_KAITI = "楷体_GB2312"
 FONT_XIAOBIAOSONG = "方正小标宋_GBK"
+CN_SUBHEADINGS = ["（一）", "（二）", "（三）", "（四）", "（五）", "（六）", "（七）", "（八）", "（九）", "（十）"]
 
 
 # ── 工具函数 ──────────────────────────────────────────────
@@ -99,6 +100,15 @@ def _setup_official_page(doc):
     section.left_margin = Cm(2.8)
     section.right_margin = Cm(2.6)
 
+
+def _set_paragraph_format(p, first_line_indent: bool = True, space_before: int = 0, space_after: int = 0):
+    """参考公文正文格式：3号字、首行缩进2字符、1.5倍行距。"""
+    if first_line_indent:
+        p.paragraph_format.first_line_indent = Pt(32)
+    p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
+    p.paragraph_format.space_before = Pt(space_before)
+    p.paragraph_format.space_after = Pt(space_after)
+
 def _set_cell_shading(cell, color_hex: str):
     tc_pr = cell._element.get_or_add_tcPr()
     shading = tc_pr.makeelement(
@@ -109,9 +119,8 @@ def _set_cell_shading(cell, color_hex: str):
 
 def _heading(doc, text, level):
     p = doc.add_paragraph()
-    p.paragraph_format.first_line_indent = Pt(32)
+    _set_paragraph_format(p, first_line_indent=True, space_before=8 if level == 1 else 0)
     if level == 1:
-        p.paragraph_format.space_before = Pt(8)
         run = p.add_run(text)
         _set_run_font(run, FONT_HEITI, 16)
     elif level == 2:
@@ -129,7 +138,7 @@ def _add_paragraphs(doc, text: str):
         line = line.strip()
         if line:
             p = doc.add_paragraph()
-            p.paragraph_format.first_line_indent = Pt(32)
+            _set_paragraph_format(p)
             run = p.add_run(line)
             _set_run_font(run, FONT_FANGSONG, 16)
 
@@ -141,7 +150,7 @@ def _make_header_row(table, headers, bg="FFFFFF"):
         _set_cell_shading(cell, bg)
         for p in cell.paragraphs:
             for r in p.runs:
-                _set_run_font(r, FONT_HEITI, 12, True)
+                _set_run_font(r, FONT_HEITI, 16, True)
 
 
 def _format_table(table):
@@ -150,8 +159,9 @@ def _format_table(table):
     for row in table.rows:
         for cell in row.cells:
             for p in cell.paragraphs:
+                _set_paragraph_format(p, first_line_indent=False)
                 for r in p.runs:
-                    _set_run_font(r, FONT_FANGSONG, 12, bool(r.bold), r.font.color.rgb)
+                    _set_run_font(r, FONT_FANGSONG, 16, bool(r.bold), r.font.color.rgb)
 
 
 def _add_red_separator(doc):
@@ -167,6 +177,11 @@ def _add_red_separator(doc):
     bottom.set(qn("w:color"), "FF0000")
     p_bdr.append(bottom)
     p_pr.append(p_bdr)
+
+
+def _subheading(index: int, text: str) -> str:
+    prefix = CN_SUBHEADINGS[index - 1] if index <= len(CN_SUBHEADINGS) else f"（{index}）"
+    return f"{prefix}{text}"
 
 
 # ── 主函数 ────────────────────────────────────────────────
@@ -186,25 +201,25 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
     style.font.name = FONT_FANGSONG
     style.font.size = Pt(16)
     style.element.rPr.rFonts.set(qn("w:eastAsia"), FONT_FANGSONG)
-    style.paragraph_format.line_spacing = 1.5
+    style.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
 
     # ───── 封面 ─────
     issuer_p = doc.add_paragraph()
     issuer_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    issuer_p.paragraph_format.space_after = Pt(8)
+    _set_paragraph_format(issuer_p, first_line_indent=False, space_after=8)
     run = issuer_p.add_run("卓繁信息集团股份有限公司")
     _set_run_font(run, FONT_XIAOBIAOSONG, 26, True, RGBColor(0xFF, 0x00, 0x00))
     _add_red_separator(doc)
 
     title_p = doc.add_paragraph()
     title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    title_p.paragraph_format.space_after = Pt(8)
+    _set_paragraph_format(title_p, first_line_indent=False, space_after=8)
     run = title_p.add_run(f"《{project_name}》解决方案")
     _set_run_font(run, FONT_XIAOBIAOSONG, 22, True)
 
     sub_p = doc.add_paragraph()
     sub_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    sub_p.paragraph_format.space_after = Pt(24)
+    _set_paragraph_format(sub_p, first_line_indent=False, space_after=24)
     run = sub_p.add_run("（初稿）")
     _set_run_font(run, FONT_FANGSONG, 16)
 
@@ -228,7 +243,7 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
             if cells[j].text:
                 for p in cells[j].paragraphs:
                     for r in p.runs:
-                        _set_run_font(r, FONT_HEITI, 12, True)
+                        _set_run_font(r, FONT_HEITI, 16, True)
     _format_table(meta_table)
 
     doc.add_paragraph("")
@@ -236,48 +251,48 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
     # ───── 一、现状分析 ─────
     _heading(doc, "一、现状分析", 1)
 
-    _heading(doc, "1.1 政策背景", 2)
+    _heading(doc, _subheading(1, "政策背景"), 2)
     _add_paragraphs(doc, s.get("policy_background", "【待补充】"))
 
-    _heading(doc, "1.2 现状概述", 2)
+    _heading(doc, _subheading(2, "现状概述"), 2)
     _add_paragraphs(doc, s.get("current_status", "【待调研补充】"))
 
-    _heading(doc, "1.3 痛点问题", 2)
+    _heading(doc, _subheading(3, "痛点问题"), 2)
     ordinals = ["一是", "二是", "三是", "四是", "五是", "六是", "七是"]
     for i, pt in enumerate(s.get("pain_points", [])):
         prefix = ordinals[i] if i < len(ordinals) else f"第{i+1}，"
         p = doc.add_paragraph()
-        p.paragraph_format.first_line_indent = Pt(32)
+        _set_paragraph_format(p)
         run = p.add_run(f"{prefix}，{pt}")
         _set_run_font(run, FONT_FANGSONG, 16)
 
     # ───── 二、建设目标 ─────
     _heading(doc, "二、建设目标", 1)
 
-    _heading(doc, "2.1 总体目标", 2)
+    _heading(doc, _subheading(1, "总体目标"), 2)
     _add_paragraphs(doc, s.get("overall_goal", "【待补充】"))
 
-    _heading(doc, "2.2 分项目标", 2)
+    _heading(doc, _subheading(2, "分项目标"), 2)
     for g in s.get("sub_goals", []):
         p = doc.add_paragraph()
-        p.paragraph_format.first_line_indent = Pt(32)
+        _set_paragraph_format(p)
         run = p.add_run(g)
         _set_run_font(run, FONT_FANGSONG, 16)
 
     # ───── 三、建设内容 ─────
     _heading(doc, "三、建设内容", 1)
     for i, mod in enumerate(s.get("modules", []), 1):
-        _heading(doc, f"3.{i} {mod['name']}", 2)
+        _heading(doc, _subheading(i, mod["name"]), 2)
         _add_paragraphs(doc, mod.get("content", ""))
         prod_p = doc.add_paragraph()
-        prod_p.paragraph_format.first_line_indent = Pt(32)
+        _set_paragraph_format(prod_p)
         run = prod_p.add_run(f"【产品匹配】{mod.get('product', '待确认')}")
         _set_run_font(run, FONT_FANGSONG, 16, True)
 
     # ───── 四、技术架构 ─────
     _heading(doc, "四、技术架构", 1)
 
-    _heading(doc, "4.1 总体架构", 2)
+    _heading(doc, _subheading(1, "总体架构"), 2)
     arch = s.get("architecture", "")
     if arch:
         _add_paragraphs(doc, arch)
@@ -290,22 +305,22 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
             "展示层：领导驾驶舱、门户网站、移动端",
         ]:
             p = doc.add_paragraph()
-            p.paragraph_format.first_line_indent = Pt(32)
+            _set_paragraph_format(p)
             run = p.add_run(layer)
             _set_run_font(run, FONT_FANGSONG, 16)
         doc.add_paragraph("")
         p = doc.add_paragraph()
-        p.paragraph_format.first_line_indent = Pt(32)
+        _set_paragraph_format(p)
         run = p.add_run("两大支撑体系：标准规范体系、安全保障体系。")
         _set_run_font(run, FONT_FANGSONG, 16)
 
-    _heading(doc, "4.2 技术选型", 2)
+    _heading(doc, _subheading(2, "技术选型"), 2)
     _add_paragraphs(doc, s.get("tech_selection", "【待补充技术选型说明】"))
 
     # ───── 五、实施计划 ─────
     _heading(doc, "五、实施计划", 1)
 
-    _heading(doc, "5.1 分期实施路径", 2)
+    _heading(doc, _subheading(1, "分期实施路径"), 2)
     phases = s.get("phases", [])
     if phases:
         t = doc.add_table(rows=len(phases) + 1, cols=4)
@@ -318,10 +333,10 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
             t.rows[i].cells[3].text = ph.get("deliverables", "")
         _format_table(t)
 
-    _heading(doc, "5.2 项目组织", 2)
+    _heading(doc, _subheading(2, "项目组织"), 2)
     for role in ["项目领导小组", "项目管理办公室（PMO）", "技术实施团队", "业务配合团队"]:
         p = doc.add_paragraph()
-        p.paragraph_format.first_line_indent = Pt(32)
+        _set_paragraph_format(p)
         run = p.add_run(role)
         _set_run_font(run, FONT_FANGSONG, 16)
 
@@ -343,51 +358,51 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
         for c in last.cells:
             for p in c.paragraphs:
                 for r in p.runs:
-                    _set_run_font(r, FONT_HEITI, 12, True)
+                    _set_run_font(r, FONT_HEITI, 16, True)
         _format_table(t)
 
     warn = doc.add_paragraph()
-    warn.paragraph_format.first_line_indent = Pt(32)
+    _set_paragraph_format(warn)
     run = warn.add_run("注：预算为估算框架，具体金额由商务部门确认。")
     _set_run_font(run, FONT_FANGSONG, 16)
 
     # ───── 七、亮点与预期效益 ─────
     _heading(doc, "七、亮点与预期效益", 1)
 
-    _heading(doc, "7.1 方案亮点", 2)
+    _heading(doc, _subheading(1, "方案亮点"), 2)
     for h in s.get("highlights", []):
         p = doc.add_paragraph()
-        p.paragraph_format.first_line_indent = Pt(32)
+        _set_paragraph_format(p)
         run = p.add_run(h)
         _set_run_font(run, FONT_FANGSONG, 16)
 
-    _heading(doc, "7.2 预期效益", 2)
+    _heading(doc, _subheading(2, "预期效益"), 2)
     for b in s.get("benefits", []):
         p = doc.add_paragraph()
-        p.paragraph_format.first_line_indent = Pt(32)
+        _set_paragraph_format(p)
         run = p.add_run(b)
         _set_run_font(run, FONT_FANGSONG, 16)
 
-    _heading(doc, "7.3 成功案例参考", 2)
+    _heading(doc, _subheading(3, "成功案例参考"), 2)
     cases = s.get("cases", [])
     if cases:
         for case in cases:
             p = doc.add_paragraph()
-            p.paragraph_format.first_line_indent = Pt(32)
+            _set_paragraph_format(p)
             run = p.add_run(case.get("name", ""))
             _set_run_font(run, FONT_FANGSONG, 16, True)
             if case.get("summary"):
                 p = doc.add_paragraph()
-                p.paragraph_format.first_line_indent = Pt(32)
+                _set_paragraph_format(p)
                 run = p.add_run(case["summary"])
                 _set_run_font(run, FONT_FANGSONG, 16)
             src_p = doc.add_paragraph()
-            src_p.paragraph_format.first_line_indent = Pt(32)
+            _set_paragraph_format(src_p)
             run = src_p.add_run(f"[来源] {case.get('source', '知识库')}")
             _set_run_font(run, FONT_FANGSONG, 16)
     else:
         p = doc.add_paragraph()
-        p.paragraph_format.first_line_indent = Pt(32)
+        _set_paragraph_format(p)
         run = p.add_run("【待补充成功案例】")
         _set_run_font(run, FONT_FANGSONG, 16)
 
@@ -404,7 +419,7 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
     ]
     for item in s.get("review_notes", default_reviews):
         p = doc.add_paragraph()
-        p.paragraph_format.first_line_indent = Pt(32)
+        _set_paragraph_format(p)
         run = p.add_run(f"[ ] {item}")
         _set_run_font(run, FONT_FANGSONG, 16)
 
@@ -426,12 +441,11 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
         info_t.rows[i].cells[1].text = v
         for p in info_t.rows[i].cells[0].paragraphs:
             for r in p.runs:
-                _set_run_font(r, FONT_HEITI, 12, True)
+                _set_run_font(r, FONT_HEITI, 16, True)
     _format_table(info_t)
 
     disclaimer = doc.add_paragraph()
-    disclaimer.paragraph_format.space_before = Pt(12)
-    disclaimer.paragraph_format.first_line_indent = Pt(32)
+    _set_paragraph_format(disclaimer, space_before=12)
     run = disclaimer.add_run(
         "本方案初稿由「卓智」数字员工辅助生成，所有内容需经人工审核确认后方可使用。"
     )
