@@ -63,6 +63,11 @@ SCHEMA = """
     "review_notes": ["需人工审核项1", "需人工审核项2"],
     "ref_proposals": "参考的历史方案",
     "ref_products": "匹配的产品模块",
+    "policy_search_status": "成功/部分成功/失败降级",
+    "policy_search_note": "政策检索说明",
+    "policy_sources": [
+      {"name": "政策名称", "issuer": "发文单位", "date": "发文时间", "url": "来源链接", "status": "已核验/待核验原文"}
+    ],
     "ref_policies_count": 0,
     "ref_cases_count": 0,
     "source_ratio": "知识库 30% / 政策库 20% / 模型生成 50%"
@@ -184,6 +189,23 @@ def _subheading(index: int, text: str) -> str:
     return f"{prefix}{text}"
 
 
+def _enforce_policy_traceability(sections: dict):
+    """没有政策来源链接时，自动把政策引用降级为待联网核验。"""
+    policy_background = sections.get("policy_background", "")
+    policy_sources = sections.get("policy_sources") or []
+    ref_policies_count = sections.get("ref_policies_count", 0) or 0
+    has_policy_claims = "《" in policy_background or int(ref_policies_count) > 0
+
+    if has_policy_claims and not policy_sources:
+        sections["policy_search_status"] = "失败降级"
+        sections["policy_search_note"] = (
+            "正文包含政策引用，但生成数据未提供可核验来源链接，已按待联网核验处理。"
+        )
+        warning = "政策来源链接未随生成数据提供，以上政策引用需进一步联网核验。[待联网核验]"
+        if "待联网核验" not in policy_background:
+            sections["policy_background"] = f"{policy_background}\n\n{warning}".strip()
+
+
 # ── 主函数 ────────────────────────────────────────────────
 
 def build_proposal_docx(data: dict, output_path: str = None) -> str:
@@ -192,6 +214,7 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
     customer_type = data["customer_type"]
     region = data["region"]
     s = data.get("sections", {})
+    _enforce_policy_traceability(s)
 
     doc = Document()
     _setup_official_page(doc)
@@ -425,13 +448,15 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
 
     # ───── 附录B：生成说明 ─────
     _heading(doc, "附录B：生成说明", 1)
-    info_t = doc.add_table(rows=7, cols=2)
+    info_t = doc.add_table(rows=9, cols=2)
     _format_table(info_t)
     info_data = [
         ("客户类型", customer_type),
         ("区域", region),
         ("参考历史方案", s.get("ref_proposals", "无（知识库未接入）")),
         ("匹配产品模块", s.get("ref_products", "无")),
+        ("政策检索状态", s.get("policy_search_status", "未说明")),
+        ("政策检索说明", s.get("policy_search_note", "未说明")),
         ("引用政策数量", f"{s.get('ref_policies_count', 0)} 条"),
         ("引用案例数量", f"{s.get('ref_cases_count', 0)} 个"),
         ("内容来源占比", s.get("source_ratio", "模型生成 100%（知识库未接入）")),
@@ -443,6 +468,20 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
             for r in p.runs:
                 _set_run_font(r, FONT_HEITI, 16, True)
     _format_table(info_t)
+
+    policy_sources = s.get("policy_sources", [])
+    if policy_sources:
+        _heading(doc, "政策来源链接", 2)
+        src_t = doc.add_table(rows=len(policy_sources) + 1, cols=5)
+        _format_table(src_t)
+        _make_header_row(src_t, ["政策名称", "发文单位", "时间", "状态", "来源链接"])
+        for i, item in enumerate(policy_sources, 1):
+            src_t.rows[i].cells[0].text = item.get("name", "")
+            src_t.rows[i].cells[1].text = item.get("issuer", "")
+            src_t.rows[i].cells[2].text = item.get("date", "")
+            src_t.rows[i].cells[3].text = item.get("status", "")
+            src_t.rows[i].cells[4].text = item.get("url", "")
+        _format_table(src_t)
 
     disclaimer = doc.add_paragraph()
     _set_paragraph_format(disclaimer, space_before=12)
