@@ -31,6 +31,7 @@ except ImportError:
 SCHEMA = """
 输入 JSON 结构：
 {
+  "document_type": "solution/achievement_report",
   "project_name": "项目名称",
   "customer_name": "客户单位名称",
   "customer_type": "数据局/政务中心/大数据中心/数据集团/企业",
@@ -74,7 +75,18 @@ SCHEMA = """
     ],
     "ref_policies_count": 0,
     "ref_cases_count": 0,
-    "source_note": "政策来源、行业资料、案例来源详见来源清单；其余内容为模型辅助生成，需人工审核确认。"
+    "source_note": "政策来源、行业资料、案例来源详见来源清单；其余内容为模型辅助生成，需人工审核确认。",
+    "report_overview": "建设总体概况（建设情况汇报使用）",
+    "achievement_scenes": [
+      {
+        "name": "场景名称",
+        "subtitle": "一句话亮点标题",
+        "overview": "场景概述",
+        "measures": ["一是具体做法与成效", "二是具体做法与成效", "三是具体做法与成效"]
+      }
+    ],
+    "next_steps": ["下一步计划1", "下一步计划2"],
+    "conclusion": "结尾总结"
   }
 }
 """
@@ -261,6 +273,84 @@ def _add_source_list(doc, title: str, items: list, issuer_label: str = "发布�
             _set_run_font(value_run, FONT_FANGSONG, 16)
 
 
+def _is_achievement_report(data: dict, sections: dict) -> bool:
+    doc_type = (data.get("document_type") or sections.get("document_type") or "").lower()
+    project_name = data.get("project_name", "")
+    return (
+        doc_type in {"achievement_report", "report", "work_report", "建设情况汇报", "成效汇报"}
+        or "建设情况" in project_name
+        or "汇报" in project_name
+    )
+
+
+def _add_common_appendices(doc, customer_type: str, region: str, sections: dict):
+    doc.add_page_break()
+    _heading(doc, "附录A：人工审核提示", 1)
+    default_reviews = [
+        "政策引用是否准确（请核对原文及文号）",
+        "产品模块匹配是否与公司最新产品清单一致",
+        "预算金额需由商务部门填写",
+        "方案创新点建议资深顾问补充差异化设计",
+        "客户承诺与量化指标需确认可达性",
+        "竞对策略如需补充请人工添加",
+    ]
+    for item in sections.get("review_notes", default_reviews):
+        p = doc.add_paragraph()
+        _set_paragraph_format(p)
+        run = p.add_run(f"[ ] {item}")
+        _set_run_font(run, FONT_FANGSONG, 16)
+
+    _heading(doc, "附录B：生成说明", 1)
+    info_t = doc.add_table(rows=9, cols=2)
+    _format_table(info_t)
+    info_data = [
+        ("客户类型", customer_type),
+        ("区域", region),
+        ("参考历史方案", sections.get("ref_proposals", "无（知识库未接入）")),
+        ("匹配产品模块", sections.get("ref_products", "无")),
+        ("政策检索状态", sections.get("policy_search_status", "未说明")),
+        ("政策检索说明", sections.get("policy_search_note", "未说明")),
+        ("引用政策数量", f"{sections.get('ref_policies_count', 0)} 条"),
+        ("引用案例数量", f"{sections.get('ref_cases_count', 0)} 个"),
+        ("内容来源说明", sections.get("source_note", "政策来源、行业资料、案例来源详见来源清单；其余内容为模型辅助生成，需人工审核确认。")),
+    ]
+    for i, (k, v) in enumerate(info_data):
+        info_t.rows[i].cells[0].text = k
+        info_t.rows[i].cells[1].text = v
+        for p in info_t.rows[i].cells[0].paragraphs:
+            for r in p.runs:
+                _set_run_font(r, FONT_HEITI, 16, True)
+    _format_table(info_t)
+
+    source_groups = [
+        ("政策来源", sections.get("policy_sources", []), "发文单位"),
+        ("行业资料来源", sections.get("industry_sources", []), "发布单位"),
+        ("案例来源", sections.get("cases", []), "来源"),
+    ]
+    if any(items for _, items, _ in source_groups):
+        _heading(doc, "附录C：来源清单", 1)
+        for title, items, issuer_label in source_groups:
+            _add_source_list(doc, title, items, issuer_label)
+
+    disclaimer = doc.add_paragraph()
+    _set_paragraph_format(disclaimer, space_before=12)
+    run = disclaimer.add_run(
+        "本方案初稿由「咨询顾问-卓智」数字员工辅助生成，所有内容需经人工审核确认后方可使用。"
+    )
+    _set_run_font(run, FONT_FANGSONG, 16)
+
+
+def _save_doc(doc, output_path: str, region: str, project_name: str) -> str:
+    if not output_path:
+        today = date.today().strftime("%Y%m%d")
+        safe = lambda t: t.replace("/", "_").replace("\\", "_").replace(" ", "")
+        output_path = f"ZX01_{safe(region)}_{safe(project_name[:10])}_解决方案_初稿_{today}.docx"
+
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+    doc.save(output_path)
+    return os.path.abspath(output_path)
+
+
 # ── 主函数 ────────────────────────────────────────────────
 
 def build_proposal_docx(data: dict, output_path: str = None) -> str:
@@ -269,6 +359,7 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
     customer_type = data["customer_type"]
     region = data["region"]
     s = data.get("sections", {})
+    is_report = _is_achievement_report(data, s)
     _enforce_policy_traceability(s)
     _enforce_case_traceability(s)
 
@@ -286,7 +377,11 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
     title_p = doc.add_paragraph()
     title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     _set_paragraph_format(title_p, first_line_indent=False, space_after=8)
-    run = title_p.add_run(f"《{project_name}》\n解决方案")
+    if is_report:
+        title_text = project_name if "汇报" in project_name else f"关于{project_name}建设情况的汇报"
+    else:
+        title_text = f"《{project_name}》\n解决方案"
+    run = title_p.add_run(title_text)
     _set_run_font(run, FONT_XIAOBIAOSONG, 22, True)
 
     sub_p = doc.add_paragraph()
@@ -319,6 +414,47 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
     _format_table(meta_table)
 
     doc.add_paragraph("")
+
+    if is_report:
+        _heading(doc, "一、建设总体概况", 1)
+        _add_paragraphs(doc, s.get("report_overview") or s.get("current_status", "【待补充建设总体概况】"))
+
+        _heading(doc, "二、场景建设成效", 1)
+        scenes = s.get("achievement_scenes") or []
+        if scenes:
+            ordinals = ["一是", "二是", "三是", "四是", "五是", "六是", "七是"]
+            for i, scene in enumerate(scenes, 1):
+                title = scene.get("name", f"场景{i}")
+                subtitle = scene.get("subtitle", "")
+                _heading(doc, f"{title}：{subtitle}" if subtitle else title, 2)
+                if scene.get("overview"):
+                    _add_paragraphs(doc, scene["overview"])
+                for j, measure in enumerate(scene.get("measures", [])):
+                    prefix = ordinals[j] if j < len(ordinals) else f"第{j+1}，"
+                    p = doc.add_paragraph()
+                    _set_paragraph_format(p)
+                    run = p.add_run(f"{prefix}，{_strip_inline_sources(measure)}")
+                    _set_run_font(run, FONT_FANGSONG, 16)
+        else:
+            p = doc.add_paragraph()
+            _set_paragraph_format(p)
+            run = p.add_run("【待补充场景建设成效】")
+            _set_run_font(run, FONT_FANGSONG, 16)
+
+        _heading(doc, "三、下一步工作计划", 1)
+        ordinals = ["一是", "二是", "三是", "四是", "五是", "六是"]
+        for i, step in enumerate(s.get("next_steps", [])):
+            prefix = ordinals[i] if i < len(ordinals) else f"第{i+1}，"
+            p = doc.add_paragraph()
+            _set_paragraph_format(p)
+            run = p.add_run(f"{prefix}，{_strip_inline_sources(step)}")
+            _set_run_font(run, FONT_FANGSONG, 16)
+
+        if s.get("conclusion"):
+            _add_paragraphs(doc, s["conclusion"])
+
+        _add_common_appendices(doc, customer_type, region, s)
+        return _save_doc(doc, output_path, region, project_name)
 
     # ───── 一、现状分析 ─────
     _heading(doc, "一、现状分析", 1)
@@ -474,72 +610,10 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
         run = p.add_run("【待补充成功案例】")
         _set_run_font(run, FONT_FANGSONG, 16)
 
-    # ───── 附录A：人工审核提示 ─────
-    doc.add_page_break()
-    _heading(doc, "附录A：人工审核提示", 1)
-    default_reviews = [
-        "政策引用是否准确（请核对原文及文号）",
-        "产品模块匹配是否与公司最新产品清单一致",
-        "预算金额需由商务部门填写",
-        "方案创新点建议资深顾问补充差异化设计",
-        "客户承诺与量化指标需确认可达性",
-        "竞对策略如需补充请人工添加",
-    ]
-    for item in s.get("review_notes", default_reviews):
-        p = doc.add_paragraph()
-        _set_paragraph_format(p)
-        run = p.add_run(f"[ ] {item}")
-        _set_run_font(run, FONT_FANGSONG, 16)
-
-    # ───── 附录B：生成说明 ─────
-    _heading(doc, "附录B：生成说明", 1)
-    info_t = doc.add_table(rows=9, cols=2)
-    _format_table(info_t)
-    info_data = [
-        ("客户类型", customer_type),
-        ("区域", region),
-        ("参考历史方案", s.get("ref_proposals", "无（知识库未接入）")),
-        ("匹配产品模块", s.get("ref_products", "无")),
-        ("政策检索状态", s.get("policy_search_status", "未说明")),
-        ("政策检索说明", s.get("policy_search_note", "未说明")),
-        ("引用政策数量", f"{s.get('ref_policies_count', 0)} 条"),
-        ("引用案例数量", f"{s.get('ref_cases_count', 0)} 个"),
-        ("内容来源说明", s.get("source_note", "政策来源、行业资料、案例来源详见来源清单；其余内容为模型辅助生成，需人工审核确认。")),
-    ]
-    for i, (k, v) in enumerate(info_data):
-        info_t.rows[i].cells[0].text = k
-        info_t.rows[i].cells[1].text = v
-        for p in info_t.rows[i].cells[0].paragraphs:
-            for r in p.runs:
-                _set_run_font(r, FONT_HEITI, 16, True)
-    _format_table(info_t)
-
-    source_groups = [
-        ("政策来源", s.get("policy_sources", []), "发文单位"),
-        ("行业资料来源", s.get("industry_sources", []), "发布单位"),
-        ("案例来源", s.get("cases", []), "来源"),
-    ]
-    if any(items for _, items, _ in source_groups):
-        _heading(doc, "附录C：来源清单", 1)
-        for title, items, issuer_label in source_groups:
-            _add_source_list(doc, title, items, issuer_label)
-
-    disclaimer = doc.add_paragraph()
-    _set_paragraph_format(disclaimer, space_before=12)
-    run = disclaimer.add_run(
-        "本方案初稿由「卓智」数字员工辅助生成，所有内容需经人工审核确认后方可使用。"
-    )
-    _set_run_font(run, FONT_FANGSONG, 16)
+    _add_common_appendices(doc, customer_type, region, s)
 
     # ───── 保存 ─────
-    if not output_path:
-        today = date.today().strftime("%Y%m%d")
-        safe = lambda t: t.replace("/", "_").replace("\\", "_").replace(" ", "")
-        output_path = f"ZX01_{safe(region)}_{safe(project_name[:10])}_解决方案_初稿_{today}.docx"
-
-    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
-    doc.save(output_path)
-    return os.path.abspath(output_path)
+    return _save_doc(doc, output_path, region, project_name)
 
 
 # ── CLI 入口 ──────────────────────────────────────────────
