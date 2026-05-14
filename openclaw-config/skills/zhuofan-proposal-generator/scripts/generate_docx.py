@@ -111,6 +111,57 @@ def _set_run_font(run, font_name: str, size_pt: int, bold: bool = False, color: 
     run._element.rPr.rFonts.set(qn("w:eastAsia"), font_name)
 
 
+def _manual_review_comment(text: str) -> str:
+    if not text:
+        return ""
+    review_markers = [
+        "待人工核查",
+        "待人工确认",
+        "待人工补充",
+        "待联网核验",
+        "待核验原文",
+        "待确认",
+        "待补充",
+        "示例数据",
+        "需根据实际",
+        "需与客户实际",
+        "需补充联网核验",
+        "需人工审核",
+    ]
+    if not any(marker in text for marker in review_markers):
+        return ""
+    if "示例数据" in text:
+        return "该数据为示例数据，请根据实际运营数据核查后替换或确认。"
+    if "待联网核验" in text or "待核验原文" in text:
+        return "该内容需要联网核验原始来源，确认后再用于正式稿。"
+    return "该内容需要人工核查确认，正式稿发布前请补充或校准。"
+
+
+def _add_review_comment(doc, run, text: str):
+    comment = _manual_review_comment(text)
+    if not comment or not hasattr(doc, "add_comment"):
+        return
+    try:
+        doc.add_comment(run, comment, author="咨询顾问-卓智", initials="ZX")
+    except Exception:
+        # 兼容旧版 python-docx：不支持批注时不影响文档生成。
+        return
+
+
+def _add_run(doc, paragraph, text: str, font_name: str = FONT_FANGSONG, size_pt: int = 16, bold: bool = False, color: RGBColor = None):
+    run = paragraph.add_run(text)
+    _set_run_font(run, font_name, size_pt, bold, color)
+    _add_review_comment(doc, run, text)
+    return run
+
+
+def _set_cell_text(doc, cell, text: str, font_name: str = FONT_FANGSONG, size_pt: int = 16, bold: bool = False):
+    cell.text = ""
+    p = cell.paragraphs[0]
+    _set_paragraph_format(p, first_line_indent=False)
+    _add_run(doc, p, str(text), font_name, size_pt, bold)
+
+
 def _setup_official_page(doc):
     """参考 official-doc-writer / GB/T 9704-2012 设置 A4 版面。"""
     section = doc.sections[0]
@@ -143,14 +194,11 @@ def _heading(doc, text, level):
     p = doc.add_paragraph()
     _set_paragraph_format(p, first_line_indent=True, space_before=8 if level == 1 else 0)
     if level == 1:
-        run = p.add_run(text)
-        _set_run_font(run, FONT_HEITI, 16)
+        run = _add_run(doc, p, text, FONT_HEITI, 16)
     elif level == 2:
-        run = p.add_run(text)
-        _set_run_font(run, FONT_KAITI, 16)
+        run = _add_run(doc, p, text, FONT_KAITI, 16)
     else:
-        run = p.add_run(text)
-        _set_run_font(run, FONT_FANGSONG, 16)
+        run = _add_run(doc, p, text, FONT_FANGSONG, 16)
     return p
 
 
@@ -171,8 +219,7 @@ def _add_paragraphs(doc, text: str):
         if line:
             p = doc.add_paragraph()
             _set_paragraph_format(p)
-            run = p.add_run(line)
-            _set_run_font(run, FONT_FANGSONG, 16)
+            _add_run(doc, p, line, FONT_FANGSONG, 16)
 
 
 def _make_header_row(table, headers, bg="FFFFFF"):
@@ -250,6 +297,35 @@ def _source_fields(item: dict, issuer_label: str = "发布单位"):
     ]
 
 
+def _verification_source_items(sections: dict) -> list:
+    items = []
+    review_notes = sections.get("review_notes") or []
+    for note in review_notes:
+        note_text = str(note).strip()
+        if not _manual_review_comment(note_text):
+            continue
+        items.append(
+            {
+                "name": note_text,
+                "issuer": "人工核查",
+                "date": "",
+                "status": "待人工确认",
+                "url": "请结合客户材料、运营台账、系统后台数据或主管部门公开信息核验。",
+            }
+        )
+    if not items:
+        items.append(
+            {
+                "name": "正文示例数据、平台名称和政策依据核验",
+                "issuer": "人工核查",
+                "date": "",
+                "status": "待人工确认",
+                "url": "请结合客户材料、运营台账、系统后台数据或主管部门公开信息核验。",
+            }
+        )
+    return items
+
+
 def _add_source_list(doc, title: str, items: list, issuer_label: str = "发布单位"):
     if not items:
         return
@@ -259,18 +335,59 @@ def _add_source_list(doc, title: str, items: list, issuer_label: str = "发布�
             continue
         p = doc.add_paragraph()
         _set_paragraph_format(p, first_line_indent=False)
-        run = p.add_run(f"{i}. {_source_heading(item)}")
-        _set_run_font(run, FONT_HEITI, 16, True)
+        _add_run(doc, p, f"{i}. {_source_heading(item)}", FONT_HEITI, 16, True)
 
         for label, value in _source_fields(item, issuer_label):
             if not value:
                 continue
             p = doc.add_paragraph()
             _set_paragraph_format(p)
-            label_run = p.add_run(f"{label}：")
-            _set_run_font(label_run, FONT_HEITI, 16, True)
-            value_run = p.add_run(value)
-            _set_run_font(value_run, FONT_FANGSONG, 16)
+            _add_run(doc, p, f"{label}：", FONT_HEITI, 16, True)
+            _add_run(doc, p, value, FONT_FANGSONG, 16)
+
+
+def _appendix_heading(doc, title: str):
+    doc.add_page_break()
+    _heading(doc, title, 1)
+
+
+def _clean_report_project_name(project_name: str) -> str:
+    name = re.sub(r"^关于", "", project_name or "").strip(" 　")
+    name = re.sub(r"(建设情况的?汇报|建设情况汇报|工作汇报|成效汇报)$", "", name).strip(" 　")
+    return name
+
+
+def _report_title(project_name: str) -> str:
+    if project_name.startswith("关于") and "汇报" in project_name and "建设建设情况" not in project_name:
+        return project_name
+    name = _clean_report_project_name(project_name)
+    if name.endswith("建设"):
+        return f"关于{name}情况的汇报"
+    return f"关于{name}建设情况的汇报"
+
+
+def _normalize_report_sections(data: dict, sections: dict):
+    review_notes = list(sections.get("review_notes", []))
+    for note in _missing_report_notes(sections):
+        if note not in review_notes:
+            review_notes.append(note)
+    sections["review_notes"] = review_notes
+    sections.setdefault(
+        "source_note",
+        "政策来源、行业资料、案例来源详见来源清单；未提供实际运营数据时，正文指标为示例数据或待确认项，需人工审核确认。",
+    )
+
+
+def _missing_report_notes(sections: dict) -> list:
+    notes = []
+    if not sections.get("report_overview"):
+        notes.append("建设总体概况未提供，需结合客户材料、运营数据或联网检索结果补充")
+    if not sections.get("achievement_scenes"):
+        notes.append("场景建设成效未提供，需从用户材料、图片OCR、知识库或联网检索结果中提取场景后补充")
+    if not sections.get("next_steps"):
+        notes.append("下一步工作计划未提供，需结合当地规划、政策要求和项目实际补充")
+    notes.append("正文中的示例指标、平台名称、AI助手名称和政策依据需根据客户材料或公开来源核验")
+    return notes
 
 
 def _is_achievement_report(data: dict, sections: dict) -> bool:
@@ -284,8 +401,7 @@ def _is_achievement_report(data: dict, sections: dict) -> bool:
 
 
 def _add_common_appendices(doc, customer_type: str, region: str, sections: dict):
-    doc.add_page_break()
-    _heading(doc, "附录A：人工审核提示", 1)
+    _appendix_heading(doc, "附录A：人工审核提示")
     default_reviews = [
         "政策引用是否准确（请核对原文及文号）",
         "产品模块匹配是否与公司最新产品清单一致",
@@ -297,10 +413,9 @@ def _add_common_appendices(doc, customer_type: str, region: str, sections: dict)
     for item in sections.get("review_notes", default_reviews):
         p = doc.add_paragraph()
         _set_paragraph_format(p)
-        run = p.add_run(f"[ ] {item}")
-        _set_run_font(run, FONT_FANGSONG, 16)
+        _add_run(doc, p, f"[ ] {item}", FONT_FANGSONG, 16)
 
-    _heading(doc, "附录B：生成说明", 1)
+    _appendix_heading(doc, "附录B：生成说明")
     info_t = doc.add_table(rows=9, cols=2)
     _format_table(info_t)
     info_data = [
@@ -315,29 +430,23 @@ def _add_common_appendices(doc, customer_type: str, region: str, sections: dict)
         ("内容来源说明", sections.get("source_note", "政策来源、行业资料、案例来源详见来源清单；其余内容为模型辅助生成，需人工审核确认。")),
     ]
     for i, (k, v) in enumerate(info_data):
-        info_t.rows[i].cells[0].text = k
-        info_t.rows[i].cells[1].text = v
-        for p in info_t.rows[i].cells[0].paragraphs:
-            for r in p.runs:
-                _set_run_font(r, FONT_HEITI, 16, True)
+        _set_cell_text(doc, info_t.rows[i].cells[0], k, FONT_HEITI, 16, True)
+        _set_cell_text(doc, info_t.rows[i].cells[1], v, FONT_FANGSONG, 16)
     _format_table(info_t)
 
     source_groups = [
         ("政策来源", sections.get("policy_sources", []), "发文单位"),
         ("行业资料来源", sections.get("industry_sources", []), "发布单位"),
         ("案例来源", sections.get("cases", []), "来源"),
+        ("待核查项清单", _verification_source_items(sections), "核查类型"),
     ]
-    if any(items for _, items, _ in source_groups):
-        _heading(doc, "附录C：来源清单", 1)
-        for title, items, issuer_label in source_groups:
-            _add_source_list(doc, title, items, issuer_label)
+    _appendix_heading(doc, "附录C：来源清单")
+    for title, items, issuer_label in source_groups:
+        _add_source_list(doc, title, items, issuer_label)
 
     disclaimer = doc.add_paragraph()
     _set_paragraph_format(disclaimer, space_before=12)
-    run = disclaimer.add_run(
-        "本方案初稿由「咨询顾问-卓智」数字员工辅助生成，所有内容需经人工审核确认后方可使用。"
-    )
-    _set_run_font(run, FONT_FANGSONG, 16)
+    _add_run(doc, disclaimer, "本方案初稿由「咨询顾问-卓智」数字员工辅助生成，所有内容需经人工审核确认后方可使用。", FONT_FANGSONG, 16)
 
 
 def _save_doc(doc, output_path: str, region: str, project_name: str) -> str:
@@ -360,6 +469,8 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
     region = data["region"]
     s = data.get("sections", {})
     is_report = _is_achievement_report(data, s)
+    if is_report:
+        _normalize_report_sections(data, s)
     _enforce_policy_traceability(s)
     _enforce_case_traceability(s)
 
@@ -378,17 +489,15 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
     title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     _set_paragraph_format(title_p, first_line_indent=False, space_after=8)
     if is_report:
-        title_text = project_name if "汇报" in project_name else f"关于{project_name}建设情况的汇报"
+        title_text = _report_title(project_name)
     else:
         title_text = f"《{project_name}》\n解决方案"
-    run = title_p.add_run(title_text)
-    _set_run_font(run, FONT_XIAOBIAOSONG, 22, True)
+    _add_run(doc, title_p, title_text, FONT_XIAOBIAOSONG, 22, True)
 
     sub_p = doc.add_paragraph()
     sub_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     _set_paragraph_format(sub_p, first_line_indent=False, space_after=24)
-    run = sub_p.add_run("（初稿）")
-    _set_run_font(run, FONT_FANGSONG, 16)
+    _add_run(doc, sub_p, "（初稿）", FONT_FANGSONG, 16)
 
     # 元信息
     meta_table = doc.add_table(rows=4, cols=4)
@@ -433,13 +542,11 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
                     prefix = ordinals[j] if j < len(ordinals) else f"第{j+1}，"
                     p = doc.add_paragraph()
                     _set_paragraph_format(p)
-                    run = p.add_run(f"{prefix}，{_strip_inline_sources(measure)}")
-                    _set_run_font(run, FONT_FANGSONG, 16)
+                    _add_run(doc, p, f"{prefix}，{_strip_inline_sources(measure)}", FONT_FANGSONG, 16)
         else:
             p = doc.add_paragraph()
             _set_paragraph_format(p)
-            run = p.add_run("【待补充场景建设成效】")
-            _set_run_font(run, FONT_FANGSONG, 16)
+            _add_run(doc, p, "【待补充场景建设成效】", FONT_FANGSONG, 16)
 
         _heading(doc, "三、下一步工作计划", 1)
         ordinals = ["一是", "二是", "三是", "四是", "五是", "六是"]
@@ -447,8 +554,7 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
             prefix = ordinals[i] if i < len(ordinals) else f"第{i+1}，"
             p = doc.add_paragraph()
             _set_paragraph_format(p)
-            run = p.add_run(f"{prefix}，{_strip_inline_sources(step)}")
-            _set_run_font(run, FONT_FANGSONG, 16)
+            _add_run(doc, p, f"{prefix}，{_strip_inline_sources(step)}", FONT_FANGSONG, 16)
 
         if s.get("conclusion"):
             _add_paragraphs(doc, s["conclusion"])
@@ -471,8 +577,7 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
         prefix = ordinals[i] if i < len(ordinals) else f"第{i+1}，"
         p = doc.add_paragraph()
         _set_paragraph_format(p)
-        run = p.add_run(f"{prefix}，{pt}")
-        _set_run_font(run, FONT_FANGSONG, 16)
+        _add_run(doc, p, f"{prefix}，{pt}", FONT_FANGSONG, 16)
 
     # ───── 二、建设目标 ─────
     _heading(doc, "二、建设目标", 1)
@@ -484,8 +589,7 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
     for g in s.get("sub_goals", []):
         p = doc.add_paragraph()
         _set_paragraph_format(p)
-        run = p.add_run(g)
-        _set_run_font(run, FONT_FANGSONG, 16)
+        _add_run(doc, p, g, FONT_FANGSONG, 16)
 
     # ───── 三、建设内容 ─────
     _heading(doc, "三、建设内容", 1)
@@ -494,8 +598,7 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
         _add_paragraphs(doc, mod.get("content", ""))
         prod_p = doc.add_paragraph()
         _set_paragraph_format(prod_p)
-        run = prod_p.add_run(f"【产品匹配】{mod.get('product', '待确认')}")
-        _set_run_font(run, FONT_FANGSONG, 16, True)
+        _add_run(doc, prod_p, f"【产品匹配】{mod.get('product', '待确认')}", FONT_FANGSONG, 16, True)
 
     # ───── 四、技术架构 ─────
     _heading(doc, "四、技术架构", 1)
@@ -514,13 +617,11 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
         ]:
             p = doc.add_paragraph()
             _set_paragraph_format(p)
-            run = p.add_run(layer)
-            _set_run_font(run, FONT_FANGSONG, 16)
+            _add_run(doc, p, layer, FONT_FANGSONG, 16)
         doc.add_paragraph("")
         p = doc.add_paragraph()
         _set_paragraph_format(p)
-        run = p.add_run("两大支撑体系：标准规范体系、安全保障体系。")
-        _set_run_font(run, FONT_FANGSONG, 16)
+        _add_run(doc, p, "两大支撑体系：标准规范体系、安全保障体系。", FONT_FANGSONG, 16)
 
     _heading(doc, _subheading(2, "技术选型"), 2)
     _add_paragraphs(doc, s.get("tech_selection", "【待补充技术选型说明】"))
@@ -545,8 +646,7 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
     for role in ["项目领导小组", "项目管理办公室（PMO）", "技术实施团队", "业务配合团队"]:
         p = doc.add_paragraph()
         _set_paragraph_format(p)
-        run = p.add_run(role)
-        _set_run_font(run, FONT_FANGSONG, 16)
+        _add_run(doc, p, role, FONT_FANGSONG, 16)
 
     # ───── 六、预算框架 ─────
     _heading(doc, "六、预算框架", 1)
@@ -571,8 +671,7 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
 
     warn = doc.add_paragraph()
     _set_paragraph_format(warn)
-    run = warn.add_run("注：预算为估算框架，具体金额由商务部门确认。")
-    _set_run_font(run, FONT_FANGSONG, 16)
+    _add_run(doc, warn, "注：预算为估算框架，具体金额由商务部门确认。", FONT_FANGSONG, 16)
 
     # ───── 七、亮点与预期效益 ─────
     _heading(doc, "七、亮点与预期效益", 1)
@@ -581,15 +680,13 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
     for h in s.get("highlights", []):
         p = doc.add_paragraph()
         _set_paragraph_format(p)
-        run = p.add_run(h)
-        _set_run_font(run, FONT_FANGSONG, 16)
+        _add_run(doc, p, h, FONT_FANGSONG, 16)
 
     _heading(doc, _subheading(2, "预期效益"), 2)
     for b in s.get("benefits", []):
         p = doc.add_paragraph()
         _set_paragraph_format(p)
-        run = p.add_run(b)
-        _set_run_font(run, FONT_FANGSONG, 16)
+        _add_run(doc, p, b, FONT_FANGSONG, 16)
 
     _heading(doc, _subheading(3, "成功案例参考"), 2)
     cases = s.get("cases", [])
@@ -597,18 +694,15 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
         for case in cases:
             p = doc.add_paragraph()
             _set_paragraph_format(p)
-            run = p.add_run(case.get("name", ""))
-            _set_run_font(run, FONT_FANGSONG, 16, True)
+            _add_run(doc, p, case.get("name", ""), FONT_FANGSONG, 16, True)
             if case.get("summary"):
                 p = doc.add_paragraph()
                 _set_paragraph_format(p)
-                run = p.add_run(_strip_inline_sources(case["summary"]))
-                _set_run_font(run, FONT_FANGSONG, 16)
+                _add_run(doc, p, _strip_inline_sources(case["summary"]), FONT_FANGSONG, 16)
     else:
         p = doc.add_paragraph()
         _set_paragraph_format(p)
-        run = p.add_run("【待补充成功案例】")
-        _set_run_font(run, FONT_FANGSONG, 16)
+        _add_run(doc, p, "【待补充成功案例】", FONT_FANGSONG, 16)
 
     _add_common_appendices(doc, customer_type, region, s)
 
