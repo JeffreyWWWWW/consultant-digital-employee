@@ -3,4 +3,20 @@
 
 # OpenClaw runtime data
 .openclaw/
+
+# Python/runtime cache
 __pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Generated outputs
+output/*
+!output/.gitignore
+
+# Local knowledge base/runtime data
+data/chroma/
+data/tmp/
