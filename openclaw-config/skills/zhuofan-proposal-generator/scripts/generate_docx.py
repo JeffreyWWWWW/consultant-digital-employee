@@ -148,18 +148,36 @@ def _add_review_comment(doc, run, text: str):
         return
 
 
-def _add_run(doc, paragraph, text: str, font_name: str = FONT_FANGSONG, size_pt: int = 16, bold: bool = False, color: RGBColor = None):
+def _add_run(
+    doc,
+    paragraph,
+    text: str,
+    font_name: str = FONT_FANGSONG,
+    size_pt: int = 16,
+    bold: bool = False,
+    color: RGBColor = None,
+    comments: bool = True,
+):
     run = paragraph.add_run(text)
     _set_run_font(run, font_name, size_pt, bold, color)
-    _add_review_comment(doc, run, text)
+    if comments:
+        _add_review_comment(doc, run, text)
     return run
 
 
-def _set_cell_text(doc, cell, text: str, font_name: str = FONT_FANGSONG, size_pt: int = 16, bold: bool = False):
+def _set_cell_text(
+    doc,
+    cell,
+    text: str,
+    font_name: str = FONT_FANGSONG,
+    size_pt: int = 16,
+    bold: bool = False,
+    comments: bool = True,
+):
     cell.text = ""
     p = cell.paragraphs[0]
     _set_paragraph_format(p, first_line_indent=False)
-    _add_run(doc, p, str(text), font_name, size_pt, bold)
+    _add_run(doc, p, str(text), font_name, size_pt, bold, comments=comments)
 
 
 def _setup_official_page(doc):
@@ -220,6 +238,33 @@ def _add_paragraphs(doc, text: str):
             p = doc.add_paragraph()
             _set_paragraph_format(p)
             _add_run(doc, p, line, FONT_FANGSONG, 16)
+
+
+def _strip_ordinal_prefix(text: str) -> str:
+    return re.sub(r"^\s*(一是|二是|三是|四是|五是|六是|七是|八是|九是|十是)[，,、：:\s]*", "", text or "").strip()
+
+
+def _split_lead_sentence(text: str) -> tuple:
+    text = _strip_ordinal_prefix(_strip_inline_sources(text))
+    match = re.match(r"^(.{2,28}?)[。；;，,：:](.*)$", text)
+    if match:
+        lead = match.group(1).strip()
+        rest = match.group(2).strip()
+        return lead, rest
+    return text.strip(), ""
+
+
+def _add_ordinal_paragraph(doc, prefix: str, text: str):
+    p = doc.add_paragraph()
+    _set_paragraph_format(p)
+    lead, rest = _split_lead_sentence(text)
+    if lead:
+        _add_run(doc, p, f"{prefix}{lead}。", FONT_FANGSONG, 16, True, comments=False)
+        if rest:
+            _add_run(doc, p, rest, FONT_FANGSONG, 16)
+    else:
+        _add_run(doc, p, f"{prefix}{_strip_inline_sources(text)}", FONT_FANGSONG, 16, True)
+    return p
 
 
 def _make_header_row(table, headers, bg="FFFFFF"):
@@ -335,15 +380,15 @@ def _add_source_list(doc, title: str, items: list, issuer_label: str = "发布�
             continue
         p = doc.add_paragraph()
         _set_paragraph_format(p, first_line_indent=False)
-        _add_run(doc, p, f"{i}. {_source_heading(item)}", FONT_HEITI, 16, True)
+        _add_run(doc, p, f"{i}. {_source_heading(item)}", FONT_HEITI, 16, True, comments=False)
 
         for label, value in _source_fields(item, issuer_label):
             if not value:
                 continue
             p = doc.add_paragraph()
             _set_paragraph_format(p)
-            _add_run(doc, p, f"{label}：", FONT_HEITI, 16, True)
-            _add_run(doc, p, value, FONT_FANGSONG, 16)
+            _add_run(doc, p, f"{label}：", FONT_HEITI, 16, True, comments=False)
+            _add_run(doc, p, value, FONT_FANGSONG, 16, comments=False)
 
 
 def _appendix_heading(doc, title: str):
@@ -413,7 +458,7 @@ def _add_common_appendices(doc, customer_type: str, region: str, sections: dict)
     for item in sections.get("review_notes", default_reviews):
         p = doc.add_paragraph()
         _set_paragraph_format(p)
-        _add_run(doc, p, f"[ ] {item}", FONT_FANGSONG, 16)
+        _add_run(doc, p, f"[ ] {item}", FONT_FANGSONG, 16, comments=False)
 
     _appendix_heading(doc, "附录B：生成说明")
     info_t = doc.add_table(rows=9, cols=2)
@@ -430,8 +475,8 @@ def _add_common_appendices(doc, customer_type: str, region: str, sections: dict)
         ("内容来源说明", sections.get("source_note", "政策来源、行业资料、案例来源详见来源清单；其余内容为模型辅助生成，需人工审核确认。")),
     ]
     for i, (k, v) in enumerate(info_data):
-        _set_cell_text(doc, info_t.rows[i].cells[0], k, FONT_HEITI, 16, True)
-        _set_cell_text(doc, info_t.rows[i].cells[1], v, FONT_FANGSONG, 16)
+        _set_cell_text(doc, info_t.rows[i].cells[0], k, FONT_HEITI, 16, True, comments=False)
+        _set_cell_text(doc, info_t.rows[i].cells[1], v, FONT_FANGSONG, 16, comments=False)
     _format_table(info_t)
 
     source_groups = [
@@ -446,7 +491,7 @@ def _add_common_appendices(doc, customer_type: str, region: str, sections: dict)
 
     disclaimer = doc.add_paragraph()
     _set_paragraph_format(disclaimer, space_before=12)
-    _add_run(doc, disclaimer, "本方案初稿由「咨询顾问-卓智」数字员工辅助生成，所有内容需经人工审核确认后方可使用。", FONT_FANGSONG, 16)
+    _add_run(doc, disclaimer, "本方案初稿由「咨询顾问-卓智」数字员工辅助生成，所有内容需经人工审核确认后方可使用。", FONT_FANGSONG, 16, comments=False)
 
 
 def _save_doc(doc, output_path: str, region: str, project_name: str) -> str:
@@ -540,9 +585,7 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
                     _add_paragraphs(doc, scene["overview"])
                 for j, measure in enumerate(scene.get("measures", [])):
                     prefix = ordinals[j] if j < len(ordinals) else f"第{j+1}，"
-                    p = doc.add_paragraph()
-                    _set_paragraph_format(p)
-                    _add_run(doc, p, f"{prefix}，{_strip_inline_sources(measure)}", FONT_FANGSONG, 16)
+                    _add_ordinal_paragraph(doc, prefix, measure)
         else:
             p = doc.add_paragraph()
             _set_paragraph_format(p)
@@ -552,9 +595,7 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
         ordinals = ["一是", "二是", "三是", "四是", "五是", "六是"]
         for i, step in enumerate(s.get("next_steps", [])):
             prefix = ordinals[i] if i < len(ordinals) else f"第{i+1}，"
-            p = doc.add_paragraph()
-            _set_paragraph_format(p)
-            _add_run(doc, p, f"{prefix}，{_strip_inline_sources(step)}", FONT_FANGSONG, 16)
+            _add_ordinal_paragraph(doc, prefix, step)
 
         if s.get("conclusion"):
             _add_paragraphs(doc, s["conclusion"])
