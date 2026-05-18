@@ -305,7 +305,7 @@
 
 ## 九、质检与修正规程
 
-输出前必须按 `quality-checklist.md` 审稿，并形成 `review_notes`。
+输出前必须先读取 `quality-routing.md`，再按对应 `document_type` 的 checklist 审稿，并形成 `review_notes`。
 
 重点检查：
 

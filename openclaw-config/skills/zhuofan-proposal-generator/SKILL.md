@@ -38,7 +38,10 @@ description: |-
 | 解决方案初稿结构 | `references/structures/solution-draft.md` | `document_type=solution` 或完整方案时读取 |
 | 建设情况汇报结构 | `references/structures/achievement-report.md` | `document_type=achievement_report` 时读取 |
 | 正文写作与去 AI 化 | `references/prompt-templates.md` | 控制专家写法、客户类型侧重点和语言风格 |
-| 输出前审稿 | `references/quality-checklist.md` | 检查结构、来源、产品、案例、语言和风险 |
+| 质量检查路由 | `references/quality-routing.md` | 根据 `document_type` 选择 checklist |
+| 项目汇报质检 | `references/quality/project-report-checklist.md` | `document_type=project_report` 时只读此清单 |
+| 解决方案初稿质检 | `references/quality/solution-draft-checklist.md` | `document_type=solution` 时只读此清单 |
+| 建设情况汇报质检 | `references/quality/achievement-report-checklist.md` | `document_type=achievement_report` 时只读此清单 |
 
 执行原则：
 
@@ -47,7 +50,7 @@ description: |-
 - 先读取 `proposal-routing.md` 判断文档类型，再只读取对应的 `structures/*.md`；不要一次性加载全部结构。
 - 如果路由为 `project_report`，结构只按 `structures/project-report.md`，Word 生成只走 `scripts/docx_generators/project_report.py`。
 - 写正文和润色时，按 `prompt-templates.md` 控制风格。
-- 输出前必须按 `quality-checklist.md` 形成 `review_notes` 并修正 JSON。
+- 输出前必须先读取 `quality-routing.md`，再只按对应 checklist 形成 `review_notes` 并修正 JSON。
 
 ## 主流程
 
@@ -161,7 +164,7 @@ description: |-
 
 ### 7. 质检与修正
 
-生成 Word 前必须按 `quality-checklist.md` 审稿，并根据结果修正 JSON。
+生成 Word 前必须按 `quality-routing.md` 选择对应 checklist 审稿，并根据结果修正 JSON。
 
 重点检查：
 
