@@ -31,7 +31,7 @@ except ImportError:
 SCHEMA = """
 输入 JSON 结构：
 {
-  "document_type": "solution/achievement_report",
+  "document_type": "project_report/solution/achievement_report",
   "project_name": "项目名称",
   "customer_name": "客户单位名称",
   "stage": "项目需求阶段",
@@ -579,7 +579,9 @@ def _is_achievement_report(data: dict, sections: dict) -> bool:
 
 def _is_project_report(data: dict, sections: dict) -> bool:
     doc_type = (data.get("document_type") or sections.get("document_type") or "").lower()
-    return doc_type in {"project_report", "project_brief", "project_material", "项目汇报", "项目建议支撑材料", "立项依据材料"}
+    if doc_type in {"project_report", "project_brief", "project_material", "项目汇报", "项目建议支撑材料", "立项依据材料"}:
+        return True
+    return bool(sections.get("project_basis") or sections.get("project_goals") or sections.get("project_contents"))
 
 
 def _extension_enabled(sections: dict, key: str) -> bool:
@@ -922,7 +924,7 @@ def main():
     if not args.json:
         parser.error("the following arguments are required: --json")
 
-    with open(args.json, "r", encoding="utf-8") as f:
+    with open(args.json, "r", encoding="utf-8-sig") as f:
         data = json.load(f)
 
     path = build_proposal_docx(data, args.output)

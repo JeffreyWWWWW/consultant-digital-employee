@@ -93,6 +93,18 @@ def _default_output_path(region: str, project_name: str) -> str:
     return f"ZX01_{_safe_filename(region)}_{project_short}_汇报稿_{today}.docx"
 
 
+def _normalize_output_path(output_path: str, region: str, project_name: str) -> str:
+    if not output_path:
+        return _default_output_path(region, project_name)
+
+    filename = os.path.basename(output_path)
+    legacy_solution_markers = ["解决方案", "方案初稿", "初稿"]
+    if any(marker in filename for marker in legacy_solution_markers):
+        output_dir = os.path.dirname(output_path) or "."
+        return os.path.join(output_dir, _default_output_path(region, project_name))
+    return output_path
+
+
 def _project_contents(sections: dict):
     return sections.get("project_contents") or sections.get("modules") or []
 
@@ -137,8 +149,7 @@ def build_docx(data: dict, output_path: str = None) -> str:
     else:
         _add_paragraphs(doc, contents or "【待补充建设内容】")
 
-    if not output_path:
-        output_path = _default_output_path(region, project_name)
+    output_path = _normalize_output_path(output_path, region, project_name)
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     doc.save(output_path)
