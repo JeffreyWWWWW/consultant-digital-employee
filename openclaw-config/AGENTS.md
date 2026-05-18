@@ -26,11 +26,11 @@ Use runtime-provided startup context first.
 
 ### Step 2: 方案生成
 
-按以下标准结构生成方案初稿（严格遵循此格式）：
+按以下项目需求阶段结构生成方案初稿（严格遵循此格式）。默认面向政务服务中心；不得默认生成实施计划、项目组织或预算框架，除非用户明确要求深化扩展。
 
 ```
 标题：《{项目名称}》解决方案（初稿）
-元信息：编制单位、目标客户、客户类型、日期、版本V0.1
+元信息：编制单位、目标客户、客户类型、项目阶段、日期、版本V0.1
 
 一、现状分析
   1.1 政策背景 — 引用国家/省市政策，每条标注来源
@@ -48,19 +48,20 @@ Use runtime-provided startup context first.
   4.1 总体架构 — 五层 + 两大支撑体系
   4.2 技术选型 — 信创要求时标注国产化
 
-五、实施计划
-  5.1 分期路径 — 一期/二期/三期，含交付物
-  5.2 项目组织
+五、方案亮点与预期效益
+  5.1 方案亮点 — 3-5个
+  5.2 预期效益 — 量化指标
 
-六、预算框架（表格，金额标注"待定"）
+六、成功案例参考
+  同类案例 — 必须标注来源链接；无链接不能认定为联网检索结果
 
-七、亮点与预期效益
-  7.1 方案亮点 — 3-5个
-  7.2 预期效益 — 量化指标
-  7.3 成功案例 — 标注来源链接；无法核验时标注待联网核验
+可选扩展章节（仅用户明确要求时生成）
+  扩展A：实施建议
+  扩展B：预算测算框架
+  扩展C：运维运营建议
 
-附：⚠️ 人工审核提示（政策/产品/预算/创新点需人工确认）
-附：📋 生成说明（参考方案、匹配产品、引用政策数、来源清单）
+附：人工审核提示（政策/产品/需求边界/创新点需人工确认）
+附：生成说明（参考方案、匹配产品、引用政策数、来源清单、阶段用时）
 ```
 
 ### Step 3: 输出为 Word 文档并通过企微发送文件
@@ -75,7 +76,8 @@ Use runtime-provided startup context first.
 {
   "project_name": "项目名称",
   "customer_name": "客户单位",
-  "customer_type": "客户类型",
+  "stage": "项目需求阶段",
+  "customer_type": "政务服务中心",
   "region": "区域",
   "sections": {
     "policy_background": "政策背景正文（多段用\\n分隔）",
@@ -86,8 +88,13 @@ Use runtime-provided startup context first.
     "modules": [{"name": "模块名", "content": "内容", "product": "匹配产品"}],
     "architecture": "技术架构描述",
     "tech_selection": "技术选型",
-    "phases": [{"name": "一期", "duration": "6个月", "content": "内容", "deliverables": "交付物"}],
-    "budget_items": [{"name": "模块", "amount": "待定", "note": ""}],
+    "extensions": {
+      "include_implementation_advice": false,
+      "include_budget_framework": false,
+      "include_operation_advice": false
+    },
+    "phases": [],
+    "budget_items": [],
     "highlights": ["亮点1", "亮点2"],
     "benefits": ["效益1", "效益2"],
     "cases": [{"name": "案例名", "source": "来源", "url": "来源链接", "status": "已核验/待核验原文", "summary": "摘要"}],
@@ -96,6 +103,12 @@ Use runtime-provided startup context first.
     "ref_products": "匹配产品",
     "policy_search_status": "成功/部分成功/失败降级",
     "policy_search_note": "政策检索说明",
+    "stage_timings": [
+      {"stage": "需求解析", "seconds": 0, "note": "阶段说明"}
+    ],
+    "search_log": [
+      {"category": "国家政策", "query": "检索词", "status": "success/partial/no_results/failed/not_run", "used_for": "policy_sources", "source_names": ["来源名称"]}
+    ],
     "policy_sources": [
       {"name": "政策名称", "issuer": "发文单位", "date": "发文时间", "url": "来源链接", "status": "已核验/待核验原文"}
     ],
@@ -132,6 +145,18 @@ python ~/.openclaw/workspace/skills/zhuofan-proposal-generator/scripts/generate_
 ```
 方案初稿已生成，请查收文件。
 
+总用时：{X分Y秒或Y秒}
+
+阶段用时：
+- 需求解析：{X秒}
+- 联网检索：{X秒}
+- 产品/案例匹配：{X秒}
+- JSON 初稿：{X秒}
+- 质检审稿：{X秒}
+- 修正 JSON：{X秒}
+- Word 输出：{X秒}
+- 文件发送：{X秒}
+
 参考来源：
 - 匹配产品：{产品列表}
 - 引用政策：{N}条（来源详见“附录C：来源清单”）
@@ -151,6 +176,7 @@ python ~/.openclaw/workspace/skills/zhuofan-proposal-generator/scripts/generate_
 - **禁止输出 .md 文件** — 所有方案必须输出为 .docx
 - **禁止在对话中贴方案全文** — 全文在 .docx 文件中
 - **必须发送文件** — 不能只说"已生成在某路径"，要把文件发给用户
+- **必须返回阶段用时** — 至少包含需求解析、联网检索、产品/案例匹配、JSON 初稿、质检审稿、修正 JSON、Word 输出、文件发送；未记录的阶段写“未记录”
 - **如果 python-docx 不可用** — 先尝试 `pip install python-docx`，仍失败则降级为 .md 并告知用户
 
 ## 提示词技巧（来自资深顾问经验沉淀）

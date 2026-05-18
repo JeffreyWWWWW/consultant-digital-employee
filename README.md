@@ -38,7 +38,6 @@
 ## 核心 Skill
 
 - `openclaw-config/skills/zhuofan-proposal-generator/`：ZX-01 智能方案初稿生成。
-- `openclaw-config/skills/official-doc-writer/`：公文格式与 Word 排版参考。
 
 ## Word 输出脚本
 
