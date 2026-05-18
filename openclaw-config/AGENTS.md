@@ -140,17 +140,20 @@ python ~/.openclaw/workspace/skills/zhuofan-proposal-generator/scripts/generate_
 
 #### 3.4 发送简短交付说明（对话文字）
 
-文件发送后，在对话中附上简短说明（不要贴方案全文）：
+文件发送后，在对话中附上固定交付说明（不要贴方案全文）。不得省略“总用时”和“阶段用时”；无法精确记录时写“未记录”，不能整段不写。
 
 ```
 方案初稿已生成，请查收文件。
 
+文件：{文件名}.docx
 总用时：{X分Y秒或Y秒}
 
 阶段用时：
 - 需求解析：{X秒}
+- 历史资产复用：{X秒}
 - 联网检索：{X秒}
 - 产品/案例匹配：{X秒}
+- 内容映射：{X秒}
 - JSON 初稿：{X秒}
 - 质检审稿：{X秒}
 - 修正 JSON：{X秒}
@@ -167,8 +170,6 @@ python ~/.openclaw/workspace/skills/zhuofan-proposal-generator/scripts/generate_
 - 产品匹配请与产品部门确认
 - 预算金额需填写
 - 方案创新点建议人工设计
-
-如需调整，直接告诉我。
 ```
 
 #### 重要规则
@@ -176,7 +177,7 @@ python ~/.openclaw/workspace/skills/zhuofan-proposal-generator/scripts/generate_
 - **禁止输出 .md 文件** — 所有方案必须输出为 .docx
 - **禁止在对话中贴方案全文** — 全文在 .docx 文件中
 - **必须发送文件** — 不能只说"已生成在某路径"，要把文件发给用户
-- **必须返回阶段用时** — 至少包含需求解析、联网检索、产品/案例匹配、JSON 初稿、质检审稿、修正 JSON、Word 输出、文件发送；未记录的阶段写“未记录”
+- **必须返回阶段用时** — 最后一条交付说明必须包含“阶段用时：”小节，至少包含需求解析、历史资产复用、联网检索、产品/案例匹配、内容映射、JSON 初稿、质检审稿、修正 JSON、Word 输出、文件发送；未记录的阶段写“未记录”
 - **如果 python-docx 不可用** — 先尝试 `pip install python-docx`，仍失败则降级为 .md 并告知用户
 
 ## 提示词技巧（来自资深顾问经验沉淀）

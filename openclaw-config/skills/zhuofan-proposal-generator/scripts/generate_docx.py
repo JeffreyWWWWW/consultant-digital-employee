@@ -577,6 +577,11 @@ def _is_achievement_report(data: dict, sections: dict) -> bool:
     )
 
 
+def _is_project_report(data: dict, sections: dict) -> bool:
+    doc_type = (data.get("document_type") or sections.get("document_type") or "").lower()
+    return doc_type in {"project_report", "project_brief", "project_material", "项目汇报", "项目建议支撑材料", "立项依据材料"}
+
+
 def _extension_enabled(sections: dict, key: str) -> bool:
     extensions = sections.get("extensions") or {}
     return bool(extensions.get(key) or sections.get(key))
@@ -701,8 +706,14 @@ def build_proposal_docx(data: dict, output_path: str = None) -> str:
     stage = data.get("stage") or data.get("project_stage") or "项目需求阶段"
     region = data["region"]
     s = data.get("sections", {})
+    is_project_report = _is_project_report(data, s)
+    if is_project_report:
+        from docx_generators.project_report import build_docx as build_project_report_docx
+
+        return build_project_report_docx(data, output_path)
+
     is_report = _is_achievement_report(data, s)
-    if is_report:
+    if is_report and not is_project_report:
         _normalize_report_sections(data, s)
     _enforce_research_gate(s)
     _enforce_policy_traceability(s)
