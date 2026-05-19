@@ -53,7 +53,10 @@ def _set_paragraph_format(p, first_line_indent: bool = True, space_before: int =
     fmt.space_before = Pt(space_before)
     fmt.space_after = Pt(space_after)
     if first_line_indent:
-        fmt.first_line_indent = Pt(BODY_FONT_SIZE_PT * FIRST_LINE_INDENT_CHARS)
+        ind = p._p.get_or_add_pPr().get_or_add_ind()
+        ind.set(qn("w:firstLineChars"), str(FIRST_LINE_INDENT_CHARS * 100))
+        if ind.get(qn("w:firstLine")) is not None:
+            del ind.attrib[qn("w:firstLine")]
 
 
 def _setup_page(doc):
@@ -591,6 +594,61 @@ def _validate_source_appendix_items(sources):
         raise ValueError("附录A来源清单不完整：" + "；".join(issues))
 
 
+def _source_is_verified(item) -> bool:
+    if not isinstance(item, dict):
+        return False
+    status = str(item.get("status") or item.get("verification_status") or item.get("核验状态") or "").strip()
+    return status in {"已核验原文", "人工已核验原文", "已核验官网原文"}
+
+
+def _source_review_tokens(item):
+    if not isinstance(item, dict):
+        return [str(item).strip()]
+    tokens = []
+    for key in ("name", "title", "source_name", "policy_name", "doc_no", "document_no", "url", "link", "source_url"):
+        value = item.get(key)
+        if value:
+            tokens.append(str(value).strip())
+    return [token for token in tokens if len(token) >= 4]
+
+
+def _review_note_match_text(item) -> str:
+    if isinstance(item, dict):
+        values = [
+            item.get("content"),
+            item.get("text"),
+            item.get("note"),
+            item.get("issue"),
+            item.get("target"),
+            item.get("match_text"),
+            item.get("body_text"),
+        ]
+        targets = item.get("targets")
+        if isinstance(targets, list):
+            values.extend(targets)
+        return " ".join(str(value) for value in values if value)
+    return str(item)
+
+
+def _validate_source_review_coverage(sources, review_notes):
+    if not sources or isinstance(sources, str):
+        return
+    review_text = "\n".join(_review_note_match_text(item) for item in _source_items(review_notes))
+    missing = []
+    for idx, item in enumerate(_source_items(sources), start=1):
+        if not isinstance(item, dict) or _source_is_verified(item):
+            continue
+        tokens = _source_review_tokens(item)
+        if not tokens or not any(token in review_text for token in tokens):
+            name = item.get("name") or item.get("title") or item.get("source_name") or item.get("policy_name") or f"第{idx}项来源"
+            missing.append(f"附录A第{idx}项 {name}")
+    if missing:
+        raise ValueError(
+            "附录A来源必须逐条审查：以下来源未标记为“已核验原文”，也未进入附录B人工审核事项："
+            + "；".join(map(str, missing))
+        )
+
+
 def _comments_xml(comments):
     ET.register_namespace("w", NS_W)
     root = ET.Element(f"{{{NS_W}}}comments")
@@ -715,6 +773,7 @@ def build_docx(data: dict, output_path: str = None) -> str:
         _add_paragraphs(doc, contents or "【待补充建设内容】")
 
     _validate_source_appendix_items(sources)
+    _validate_source_review_coverage(sources, review_notes)
     _comment_inline_sources_in_body(doc, sources)
     review_comment_count = _comment_review_notes_in_body(doc, review_notes, sources)
     review_item_count = _review_item_count(review_notes)
