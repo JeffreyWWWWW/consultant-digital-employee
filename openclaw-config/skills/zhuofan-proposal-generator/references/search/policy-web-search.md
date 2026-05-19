@@ -50,7 +50,8 @@ site:gov.cn {核心需求} 政策
     "query": "实际执行的检索词",
     "status": "success/partial/no_results/failed/not_run",
     "used_for": "写入材料的用途",
-    "source_names": ["来源名称"]
+    "source_names": ["来源名称"],
+    "source_urls": ["原文链接或权威来源链接"]
   }
 ]
 ```
@@ -66,6 +67,7 @@ site:gov.cn {核心需求} 政策
 ## 写入规则
 
 - 有来源的内容，可以写成已核验依据。
+- 写入附录A的政策和资料来源应优先使用 `source_urls` 中的原文链接或权威来源链接。
 - 只有线索、没有原文时，必须标注待核验。
 - 检索失败时，不得写成“根据最新政策”“已依据某文件”。
 - 没有 URL 或明确来源时，不得把案例写成已核验案例。

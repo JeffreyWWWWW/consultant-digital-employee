@@ -39,7 +39,10 @@ SCHEMA = """
         "date": "发布时间（如有）",
         "url": "原文链接；无法核验时留空并填写 status",
         "status": "success/partial/待核验原文/待联网核验",
-        "used_for": "支撑的正文内容"
+        "used_for": "支撑的正文内容",
+        "query": "按 references/search/policy-web-search.md 实际执行的检索词",
+        "source_names": ["兼容 policy-web-search.md 的来源名称数组"],
+        "source_urls": ["兼容 policy-web-search.md 的原文链接数组"]
       }
     ],
     "review_notes": ["需人工审核项"],

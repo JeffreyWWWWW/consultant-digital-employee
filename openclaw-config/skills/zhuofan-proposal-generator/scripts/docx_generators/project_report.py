@@ -4,6 +4,8 @@ from datetime import date
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
+from docx.enum.text import WD_COLOR_INDEX
+from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt
 
@@ -11,6 +13,7 @@ from docx.shared import Cm, Pt
 FONT_FANGSONG = "仿宋_GB2312"
 FONT_HEITI = "黑体"
 FONT_XIAOBIAOSONG = "方正小标宋_GBK"
+REVIEW_MARKERS = ("待核验", "待确认", "待补充", "待测算", "需人工审核", "需人工复核")
 
 
 def _set_run_font(run, font_name: str, size_pt: int, bold: bool = False):
@@ -43,6 +46,29 @@ def _add_run(p, text: str, font: str = FONT_FANGSONG, size: int = 16, bold: bool
     return run
 
 
+def _add_hyperlink(p, text: str, url: str):
+    part = p.part
+    r_id = part.relate_to(
+        url,
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink",
+        is_external=True,
+    )
+    hyperlink = OxmlElement("w:hyperlink")
+    hyperlink.set(qn("r:id"), r_id)
+
+    run = OxmlElement("w:r")
+    r_pr = OxmlElement("w:rPr")
+    r_style = OxmlElement("w:rStyle")
+    r_style.set(qn("w:val"), "Hyperlink")
+    r_pr.append(r_style)
+    run.append(r_pr)
+    text_element = OxmlElement("w:t")
+    text_element.text = text or url
+    run.append(text_element)
+    hyperlink.append(run)
+    p._p.append(hyperlink)
+
+
 def _heading(doc, text: str, level: int):
     p = doc.add_paragraph()
     _set_paragraph_format(p, first_line_indent=False, space_before=8, space_after=4)
@@ -53,12 +79,23 @@ def _heading(doc, text: str, level: int):
     return p
 
 
-def _add_paragraphs(doc, text):
+def _needs_review_highlight(text: str) -> bool:
+    return any(marker in (text or "") for marker in REVIEW_MARKERS)
+
+
+def _add_text_run(p, text: str, highlight_review: bool = True):
+    run = _add_run(p, text)
+    if highlight_review and _needs_review_highlight(text):
+        run.font.highlight_color = WD_COLOR_INDEX.YELLOW
+    return run
+
+
+def _add_paragraphs(doc, text, highlight_review: bool = True):
     if not text:
         return
     if isinstance(text, list):
         for item in text:
-            _add_paragraphs(doc, item)
+            _add_paragraphs(doc, item, highlight_review=highlight_review)
         return
     for para in str(text).split("\n"):
         para = para.strip()
@@ -66,7 +103,7 @@ def _add_paragraphs(doc, text):
             continue
         p = doc.add_paragraph()
         _set_paragraph_format(p)
-        _add_run(p, para)
+        _add_text_run(p, para, highlight_review=highlight_review)
 
 
 def _clean_title(project_name: str) -> str:
@@ -139,6 +176,41 @@ def _format_source_item(item) -> str:
     return "".join(parts)
 
 
+def _source_fields(item):
+    if not isinstance(item, dict):
+        return {"text": str(item), "url": ""}
+    source_names = item.get("source_names") or []
+    source_urls = item.get("source_urls") or []
+    if isinstance(source_names, str):
+        source_names = [source_names]
+    if isinstance(source_urls, str):
+        source_urls = [source_urls]
+    name = (
+        item.get("name")
+        or item.get("title")
+        or item.get("source_name")
+        or item.get("policy_name")
+        or (source_names[0] if source_names else "")
+        or "未命名来源"
+    )
+    agency = item.get("agency") or item.get("publisher") or item.get("source") or item.get("source_org")
+    doc_no = item.get("doc_no") or item.get("document_no")
+    date_text = item.get("date") or item.get("publish_date") or item.get("published_at")
+    url = item.get("url") or item.get("link") or item.get("source_url") or (source_urls[0] if source_urls else "")
+    status = item.get("status") or item.get("verification_status") or item.get("核验状态")
+    used_for = item.get("used_for") or item.get("support") or item.get("purpose")
+    meta = [value for value in (agency, doc_no, date_text) if value]
+    prefix = f"- {name}"
+    if meta:
+        prefix += "（" + "，".join(map(str, meta)) + "）"
+    suffix = ""
+    if used_for:
+        suffix += f"；支撑内容：{used_for}"
+    if not url:
+        suffix = f"：{status or '待核验原文'}" + suffix
+    return {"prefix": prefix, "url": url or "", "suffix": suffix}
+
+
 def _add_bullets(doc, items):
     if not items:
         return
@@ -152,6 +224,26 @@ def _add_bullets(doc, items):
         _add_run(p, f"- {text}")
 
 
+def _add_source_bullets(doc, items):
+    if not items:
+        return
+    if isinstance(items, str):
+        _add_paragraphs(doc, items)
+        return
+    for item in items:
+        fields = _source_fields(item)
+        p = doc.add_paragraph()
+        _set_paragraph_format(p)
+        if "text" in fields:
+            _add_run(p, fields["text"])
+            continue
+        _add_run(p, fields["prefix"])
+        if fields["url"]:
+            _add_run(p, "：")
+            _add_hyperlink(p, fields["url"], fields["url"])
+        _add_run(p, fields["suffix"])
+
+
 def _append_review_appendix(doc, sections: dict):
     sources = (
         sections.get("policy_sources")
@@ -163,7 +255,7 @@ def _append_review_appendix(doc, sections: dict):
 
     _heading(doc, "附录A：政策与资料来源链接", 1)
     if sources:
-        _add_bullets(doc, sources)
+        _add_source_bullets(doc, sources)
     else:
         _add_paragraphs(doc, "【待补充政策与资料来源链接】")
 
