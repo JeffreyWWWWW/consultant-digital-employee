@@ -27,3 +27,7 @@ python scripts/generate_docx.py --json proposal.json
 python scripts/generate_docx.py --json proposal.json --output output.docx
 python scripts/generate_docx.py --schema
 ```
+
+## 字体说明
+
+项目汇报 Word 采用固定字体规范：标题 `方正小标宋_GBK` 二号，正文 `仿宋_GB2312` 三号。

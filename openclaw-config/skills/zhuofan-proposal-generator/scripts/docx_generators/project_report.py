@@ -3,7 +3,7 @@ import re
 from datetime import date
 
 from docx import Document
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK, WD_LINE_SPACING
 from docx.enum.text import WD_COLOR_INDEX
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
@@ -13,7 +13,21 @@ from docx.shared import Cm, Pt
 FONT_FANGSONG = "仿宋_GB2312"
 FONT_HEITI = "黑体"
 FONT_XIAOBIAOSONG = "方正小标宋_GBK"
-REVIEW_MARKERS = ("待核验", "待确认", "待补充", "待测算", "需人工审核", "需人工复核")
+REVIEW_MARKERS = (
+    "待核验",
+    "待确认",
+    "待补充",
+    "待测算",
+    "需人工审核",
+    "需人工复核",
+    "推断",
+    "建议",
+    "未核验",
+    "模型生成",
+    "模型建议",
+)
+REVIEW_HIGHLIGHT_NOTE = "文中黄色标注内容为需人工核对事项，请结合原始材料、政策原文和客户确认结果复核。"
+CN_NUMERALS = ("一", "二", "三", "四", "五", "六", "七", "八", "九", "十")
 
 
 def _set_run_font(run, font_name: str, size_pt: int, bold: bool = False):
@@ -79,15 +93,50 @@ def _heading(doc, text: str, level: int):
     return p
 
 
+def _cn_number(index: int) -> str:
+    if 1 <= index <= 10:
+        return CN_NUMERALS[index - 1]
+    if 11 <= index <= 19:
+        return "十" + CN_NUMERALS[index - 11]
+    if index == 20:
+        return "二十"
+    return str(index)
+
+
+def _numbered_subheading(index: int, text: str) -> str:
+    text = (text or "").strip()
+    if re.match(r"^（[一二三四五六七八九十百千万]+）", text):
+        return text
+    if re.match(r"^[一二三四五六七八九十百千万]+、", text):
+        return text
+    return f"（{_cn_number(index)}）{text}"
+
+
+def _page_break(doc):
+    p = doc.add_paragraph()
+    p.add_run().add_break(WD_BREAK.PAGE)
+
+
 def _needs_review_highlight(text: str) -> bool:
     return any(marker in (text or "") for marker in REVIEW_MARKERS)
 
 
 def _add_text_run(p, text: str, highlight_review: bool = True):
-    run = _add_run(p, text)
-    if highlight_review and _needs_review_highlight(text):
-        run.font.highlight_color = WD_COLOR_INDEX.YELLOW
-    return run
+    if not highlight_review or not _needs_review_highlight(text):
+        return _add_run(p, text)
+
+    pattern = "(" + "|".join(re.escape(marker) for marker in REVIEW_MARKERS) + ")"
+    last = 0
+    highlighted_run = None
+    for match in re.finditer(pattern, text):
+        if match.start() > last:
+            _add_run(p, text[last:match.start()])
+        highlighted_run = _add_run(p, match.group(0))
+        highlighted_run.font.highlight_color = WD_COLOR_INDEX.YELLOW
+        last = match.end()
+    if last < len(text):
+        _add_run(p, text[last:])
+    return highlighted_run
 
 
 def _add_paragraphs(doc, text, highlight_review: bool = True):
@@ -106,6 +155,35 @@ def _add_paragraphs(doc, text, highlight_review: bool = True):
         _add_text_run(p, para, highlight_review=highlight_review)
 
 
+def _highlight_terms_in_document(doc, terms):
+    terms = [str(term).strip() for term in (terms or []) if str(term).strip()]
+    if not terms:
+        return
+    for paragraph in doc.paragraphs:
+        full_text = "".join(run.text for run in paragraph.runs)
+        if not full_text or not any(term in full_text for term in terms):
+            continue
+        original_runs = paragraph.runs
+        if not original_runs:
+            continue
+        base_font = original_runs[0].font.name or FONT_FANGSONG
+        base_size = int(original_runs[0].font.size.pt) if original_runs[0].font.size else 16
+        base_bold = bool(original_runs[0].font.bold)
+        for run in list(original_runs):
+            run._element.getparent().remove(run._element)
+
+        pattern = "(" + "|".join(re.escape(term) for term in sorted(terms, key=len, reverse=True)) + ")"
+        last = 0
+        for match in re.finditer(pattern, full_text):
+            if match.start() > last:
+                _add_run(paragraph, full_text[last:match.start()], base_font, base_size, base_bold)
+            highlighted_run = _add_run(paragraph, match.group(0), base_font, base_size, base_bold)
+            highlighted_run.font.highlight_color = WD_COLOR_INDEX.YELLOW
+            last = match.end()
+        if last < len(full_text):
+            _add_run(paragraph, full_text[last:], base_font, base_size, base_bold)
+
+
 def _clean_title(project_name: str) -> str:
     name = (project_name or "").strip(" 　《》")
     name = re.sub(r"(解决方案|方案初稿|初稿)$", "", name).strip(" 　-_")
@@ -121,6 +199,8 @@ def _project_report_title(project_name: str, customer_name: str = "") -> str:
         return name
     if name.endswith("建设项目"):
         report_name = f"{name}汇报"
+    elif name.endswith("建设"):
+        report_name = f"{name}项目汇报"
     else:
         report_name = f"{name}建设项目汇报"
     if customer and customer not in report_name:
@@ -253,13 +333,16 @@ def _append_review_appendix(doc, sections: dict):
     )
     review_notes = sections.get("review_notes") or []
 
+    _page_break(doc)
     _heading(doc, "附录A：政策与资料来源链接", 1)
     if sources:
         _add_source_bullets(doc, sources)
     else:
         _add_paragraphs(doc, "【待补充政策与资料来源链接】")
 
+    _page_break(doc)
     _heading(doc, "附录B：需人工审核事项", 1)
+    _add_paragraphs(doc, REVIEW_HIGHLIGHT_NOTE, highlight_review=False)
     if review_notes:
         _add_bullets(doc, review_notes)
     else:
@@ -286,26 +369,28 @@ def build_docx(data: dict, output_path: str = None) -> str:
     _set_paragraph_format(title_p, first_line_indent=False, space_after=18)
     _add_run(title_p, _project_report_title(project_name, customer_name), FONT_XIAOBIAOSONG, 22, True)
 
-    _heading(doc, "项目建设的依据", 1)
+    _heading(doc, "一、项目建设的依据", 1)
     _add_paragraphs(doc, sections.get("project_basis") or sections.get("policy_background") or "【待补充项目建设依据】")
 
-    _heading(doc, "建设目标", 1)
+    _heading(doc, "二、建设目标", 1)
     _add_paragraphs(doc, sections.get("project_goals") or sections.get("overall_goal") or "【待补充建设目标】")
 
-    _heading(doc, "建设内容", 1)
+    _heading(doc, "三、建设内容", 1)
     contents = _project_contents(sections)
     if isinstance(contents, list) and contents:
-        for item in contents:
+        for idx, item in enumerate(contents, start=1):
             if isinstance(item, dict):
                 name = item.get("name") or item.get("title")
                 content = item.get("content") or item.get("description") or item.get("summary")
                 if name:
-                    _heading(doc, name, 2)
+                    _heading(doc, _numbered_subheading(idx, name), 2)
                 _add_paragraphs(doc, content)
             else:
                 _add_paragraphs(doc, item)
     else:
         _add_paragraphs(doc, contents or "【待补充建设内容】")
+
+    _highlight_terms_in_document(doc, sections.get("review_highlights") or sections.get("manual_review_terms"))
 
     _append_review_appendix(doc, sections)
 

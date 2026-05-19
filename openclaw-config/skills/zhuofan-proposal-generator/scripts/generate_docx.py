@@ -46,6 +46,7 @@ SCHEMA = """
       }
     ],
     "review_notes": ["需人工审核项"],
+    "review_highlights": ["正文中需要标黄并人工核对的具体文字片段"],
     "source_note": "来源说明"
   }
 }
