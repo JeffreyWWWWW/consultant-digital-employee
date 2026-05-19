@@ -479,18 +479,29 @@ def _review_note_targets(item):
 
 
 def _comment_review_notes_in_body(doc, review_notes):
+    unmatched = []
     for item in _source_items(review_notes):
         note = _review_note_text(item)
         if not note:
             continue
         targets = _review_note_targets(item)
+        matched = False
         for paragraph in doc.paragraphs:
             text = _paragraph_text(paragraph)
             if not text:
                 continue
             if any(target and target in text for target in targets):
                 _add_comment_to_paragraph(paragraph, f"需人工核对：{note}")
+                matched = True
                 break
+        if not matched:
+            unmatched.append(note)
+    if unmatched:
+        details = "；".join(unmatched)
+        raise ValueError(
+            "附录B人工审核事项必须对应前文正文批注，请为以下事项补充正文内容或在 review_notes 中提供 target/match_text："
+            + details
+        )
 
 
 def _append_review_appendix(doc, sections: dict):

@@ -142,7 +142,7 @@ description: |-
 - `sections.source_note`
 
 内容 sections 字段按本次 `document_type` 对应的 structure 和生成器要求组织，不在 `SKILL.md` 固定完整清单。产品或能力映射必须来自产品库、历史材料或用户材料；无法确认时写 `待确认`。
-模型根据材料推断、补写或无法从来源直接证明的正文片段，必须写入 `sections.review_highlights`，并在 `sections.review_notes` 中说明审核原因。`sections.review_notes` 优先使用对象格式：`{"content": "需人工审核项", "target": "正文对应片段"}`，确保 Word 批注挂到正文对应段落，而不是只写在附录B。
+模型根据材料推断、补写或无法从来源直接证明的正文片段，必须写入 `sections.review_highlights`，并在 `sections.review_notes` 中说明审核原因。`sections.review_notes` 必须使用对象格式：`{"content": "需人工审核项", "target": "正文对应片段"}`，确保每条人工审核事项都挂到正文对应段落，而不是只写在附录B。
 
 ### 7. 质检与修正
 
