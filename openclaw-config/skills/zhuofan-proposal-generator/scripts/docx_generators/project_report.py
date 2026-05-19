@@ -125,6 +125,17 @@ def _numbered_subheading(index: int, text: str) -> str:
     return f"（{_cn_number(index)}）{text}"
 
 
+def _normalize_inner_numbering(text: str) -> str:
+    text = (text or "").strip()
+    match = re.match(r"^([一二三四五六七八九十百千万]+)、(.+)$", text)
+    if not match:
+        return text
+    title = match.group(2).strip()
+    if title in {"项目建设的依据", "建设目标", "建设内容"}:
+        return text
+    return f"（{match.group(1)}）{title}"
+
+
 def _page_break(doc):
     p = doc.add_paragraph()
     p.add_run().add_break(WD_BREAK.PAGE)
@@ -186,7 +197,7 @@ def _add_paragraphs(doc, text, review_comment: bool = True):
             _add_paragraphs(doc, item, review_comment=review_comment)
         return
     for para in str(text).split("\n"):
-        para = para.strip()
+        para = _normalize_inner_numbering(para)
         if not para:
             continue
         p = doc.add_paragraph()

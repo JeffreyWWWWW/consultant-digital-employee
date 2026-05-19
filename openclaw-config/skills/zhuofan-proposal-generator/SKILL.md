@@ -174,9 +174,9 @@ python scripts/generate_docx.py --json /tmp/proposal_data.json --output output.d
 对外输出要求：
 
 - 所有面向用户可见的进度说明、交付说明和错误说明必须使用中文。
-- 不得输出英文内部流程句，例如 `Now let me search...`、`Now let me read...`、`Now I have all the inputs...`。
-- 不得把读取 reference、搜索政策、生成 JSON、调用脚本等内部执行过程写入最终交付说明。
-- 如需说明进度，只用简短中文，例如“正在检索政策来源”“正在生成 Word 文档”；最终回复只保留交付结果和必要审核提示。
+- 不得输出任何英文内部流程句，包括但不限于 `Now let me...`、`Let me...`、`I need to...`、`I have...`、`The issue is...`、`All targets now match...`。
+- 不得把读取 reference、搜索政策、生成 JSON、调用脚本、检查代码、匹配 target、修复引号、排查错误等内部执行过程写入对话。
+- 如需说明进度，只用简短中文，例如“正在检索政策来源”“正在生成 Word 文档”；不要说明“我正在检查代码/target/JSON/脚本”。最终回复只保留交付结果和必要审核提示。
 - 交付前必须确认脚本返回的 `.docx` 文件真实存在；最终回复必须给出文件名或可访问路径，不得只说“已生成”。
 
 基础格式：
