@@ -172,10 +172,7 @@ def _review_comment_text(text: str) -> str:
 
 
 def _add_text_run(p, text: str, review_comment: bool = True):
-    run = _add_run(p, text)
-    if review_comment and _needs_review_comment(text):
-        _add_comment_to_paragraph(p, _review_comment_text(text))
-    return run
+    return _add_run(p, text)
 
 
 def _add_paragraphs(doc, text, review_comment: bool = True):
@@ -418,28 +415,14 @@ def _add_source_bullets(doc, items):
 
 
 def _comment_inline_sources_in_body(doc, sources):
-    source_items = [item for item in _source_items(sources) if isinstance(item, dict)]
     for paragraph in doc.paragraphs:
         text = _paragraph_text(paragraph)
         matches = INLINE_SOURCE_RE.findall(text)
         if not matches:
             continue
-        comments = []
-        for label in matches:
-            label = label.strip()
-            matched_source = None
-            for item in source_items:
-                url = item.get("url") or item.get("link") or item.get("source_url") or ""
-                name = item.get("name") or item.get("title") or item.get("source_name") or item.get("policy_name") or ""
-                host = _host_from_url(url)
-                if label.lower() in (url or "").lower() or label.lower() in host or label in str(name):
-                    matched_source = item
-                    break
-            comments.append(_source_comment_text(matched_source) if matched_source else f"来源待核验：{label}")
         clean_text = INLINE_SOURCE_RE.sub("", text)
         clean_text = re.sub(r"\s+([，。；：])", r"\1", clean_text).strip()
         _replace_paragraph_text(paragraph, clean_text)
-        _add_comment_to_paragraph(paragraph, "资料来源：" + "；".join(comments))
 
 
 def _review_note_text(item) -> str:
@@ -462,6 +445,7 @@ def _review_note_targets(item):
 
     text = _review_note_text(item)
     targets = []
+    targets.extend(re.findall(r"[\u4e00-\u9fff]+〔\d{4}〕\d+号", text))
     targets.extend(re.findall(r"[《“\"]([^》”\"]{2,60})[》”\"]", text))
     targets.extend(re.findall(r"[A-Za-z0-9一-龥]+(?:\d+%|％)", text))
     prefix = re.split(r"(?:需|待|建议|为|涉及|由|，|。)", text, maxsplit=1)[0].strip()
@@ -478,20 +462,76 @@ def _review_note_targets(item):
     return deduped
 
 
-def _comment_review_notes_in_body(doc, review_notes):
+def _source_match_text(item) -> str:
+    if not isinstance(item, dict):
+        return str(item)
+    values = []
+    for key in (
+        "name",
+        "title",
+        "source_name",
+        "policy_name",
+        "agency",
+        "publisher",
+        "source",
+        "source_org",
+        "doc_no",
+        "document_no",
+        "date",
+        "publish_date",
+        "url",
+        "link",
+        "source_url",
+    ):
+        value = item.get(key)
+        if value:
+            values.append(str(value))
+    return " ".join(values)
+
+
+def _matching_source_for_review(note: str, targets, sources):
+    source_items = [item for item in _source_items(sources) if isinstance(item, dict)]
+    tokens = [note] + [target for target in targets if target]
+    for item in source_items:
+        source_text = _source_match_text(item)
+        for token in tokens:
+            token = str(token or "").strip()
+            if len(token) >= 4 and token in source_text:
+                return item
+    return None
+
+
+def _source_suffix_for_review(note: str, targets, sources) -> str:
+    source = _matching_source_for_review(note, targets, sources)
+    if not source:
+        return ""
+    url = source.get("url") or source.get("link") or source.get("source_url")
+    if not url:
+        return ""
+    return "；可核验来源：" + _source_comment_text(source)
+
+
+def _review_item_count(review_notes) -> int:
+    return len(_source_items(review_notes))
+
+
+def _comment_review_notes_in_body(doc, review_notes, sources=None):
     unmatched = []
-    for item in _source_items(review_notes):
+    comment_count = 0
+    for idx, item in enumerate(_source_items(review_notes), start=1):
         note = _review_note_text(item)
         if not note:
             continue
         targets = _review_note_targets(item)
+        comment_text = f"需人工核对（附录B第{idx}项）：{note}{_source_suffix_for_review(note, targets, sources)}"
         matched = False
         for paragraph in doc.paragraphs:
             text = _paragraph_text(paragraph)
             if not text:
                 continue
             if any(target and target in text for target in targets):
-                _add_comment_to_paragraph(paragraph, f"需人工核对：{note}")
+                _add_comment_to_paragraph(paragraph, comment_text)
+                comment_count += 1
                 matched = True
                 break
         if not matched:
@@ -502,6 +542,7 @@ def _comment_review_notes_in_body(doc, review_notes):
             "附录B人工审核事项必须对应前文正文批注，请为以下事项补充正文内容或在 review_notes 中提供 target/match_text："
             + details
         )
+    return comment_count
 
 
 def _append_review_appendix(doc, sections: dict):
@@ -527,6 +568,27 @@ def _append_review_appendix(doc, sections: dict):
         _add_numbered_review_items(doc, review_notes)
     else:
         _add_paragraphs(doc, "【待补充需人工审核事项】")
+
+
+def _validate_source_appendix_items(sources):
+    if not sources or isinstance(sources, str):
+        return
+    issues = []
+    for idx, item in enumerate(_source_items(sources), start=1):
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name") or item.get("title") or item.get("source_name") or item.get("policy_name")
+        url = item.get("url") or item.get("link") or item.get("source_url")
+        status = item.get("status") or item.get("verification_status") or item.get("核验状态")
+        used_for = item.get("used_for") or item.get("support") or item.get("purpose")
+        if not name:
+            issues.append(f"附录A第{idx}项缺少政策或资料名称")
+        if not url and not status:
+            issues.append(f"附录A第{idx}项缺少原文链接或核验状态")
+        if not used_for:
+            issues.append(f"附录A第{idx}项缺少支撑内容")
+    if issues:
+        raise ValueError("附录A来源清单不完整：" + "；".join(issues))
 
 
 def _comments_xml(comments):
@@ -652,9 +714,16 @@ def build_docx(data: dict, output_path: str = None) -> str:
     else:
         _add_paragraphs(doc, contents or "【待补充建设内容】")
 
+    _validate_source_appendix_items(sources)
     _comment_inline_sources_in_body(doc, sources)
-    _comment_terms_in_document(doc, sections.get("review_highlights") or sections.get("manual_review_terms"))
-    _comment_review_notes_in_body(doc, review_notes)
+    review_comment_count = _comment_review_notes_in_body(doc, review_notes, sources)
+    review_item_count = _review_item_count(review_notes)
+    total_comment_count = len(getattr(doc.part, "_zhuofan_comments", []))
+    if total_comment_count != review_item_count or review_comment_count != review_item_count:
+        raise ValueError(
+            f"附录B人工审核事项与正文批注必须一对一：附录B {review_item_count} 条，"
+            f"正文批注 {total_comment_count} 条。请检查 review_notes、target/match_text 和自动批注来源。"
+        )
 
     _append_review_appendix(doc, sections)
 
