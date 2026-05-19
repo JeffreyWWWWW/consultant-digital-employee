@@ -1,933 +1,105 @@
 """
-ZX-01 方案初稿 → Word 文档生成器（Skill 内嵌版）
+ZX-01 项目汇报 Word 生成入口。
+
+当前阶段只支持 document_type=project_report。
 
 用法：
-  python generate_docx.py --json proposal.json
-  python generate_docx.py --json proposal.json --output /path/to/output.docx
-
-输入 JSON 结构见 SCHEMA 常量。
-依赖：pip install python-docx
+  python scripts/generate_docx.py --json proposal.json
+  python scripts/generate_docx.py --json proposal.json --output output.docx
+  python scripts/generate_docx.py --schema
 """
 
+import argparse
 import json
 import sys
-import os
-import argparse
-import re
 import time
-from datetime import date
-
-try:
-    from docx import Document
-    from docx.shared import Pt, Cm, RGBColor
-    from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
-    from docx.enum.table import WD_TABLE_ALIGNMENT
-    from docx.oxml.ns import qn
-except ImportError:
-    print("ERROR: python-docx 未安装，请执行 pip install python-docx", file=sys.stderr)
-    sys.exit(1)
 
 
 SCHEMA = """
 输入 JSON 结构：
 {
-  "document_type": "project_report/solution/achievement_report",
+  "document_type": "project_report",
   "project_name": "项目名称",
   "customer_name": "客户单位名称",
-  "stage": "项目需求阶段",
-  "customer_type": "政务服务中心/数据局/大数据中心/数据集团/企业",
   "region": "区域",
   "sections": {
-    "policy_background": "政策背景正文（可多段，用\\n分隔）",
-    "current_status": "现状概述正文",
-    "pain_points": ["痛点1", "痛点2", "痛点3"],
-    "overall_goal": "总体目标正文",
-    "sub_goals": ["分项目标1", "分项目标2"],
-    "modules": [
+    "project_basis": "项目建设的依据，可多段，用 \\n 分隔",
+    "project_goals": "建设目标，可多段，用 \\n 分隔",
+    "project_contents": [
       {
-        "name": "模块名称",
-        "content": "模块详细内容",
-        "product": "匹配的卓繁产品（无则写待确认）"
+        "name": "建设事项名称",
+        "content": "建设动作、服务对象、业务价值"
       }
     ],
-    "architecture": "技术架构描述（空字符串则用默认五层架构）",
-    "tech_selection": "技术选型说明",
-    "extensions": {
-      "include_implementation_advice": false,
-      "include_budget_framework": false,
-      "include_operation_advice": false
-    },
-    "phases": [
-      {"name": "阶段建议", "duration": "待定", "content": "推进建议", "deliverables": "建议成果"}
-    ],
-    "budget_items": [
-      {"name": "模块名", "amount": "待定", "note": ""}
-    ],
-    "highlights": ["亮点1", "亮点2"],
-    "benefits": ["效益1", "效益2"],
-    "cases": [
-      {"name": "案例名", "source": "来源", "url": "来源链接", "status": "已核验/待核验原文", "summary": "摘要"}
-    ],
-    "review_notes": ["需人工审核项1", "需人工审核项2"],
-    "ref_proposals": "参考的历史方案",
-    "ref_products": "匹配的产品模块",
-    "policy_search_status": "成功/部分成功/失败降级",
-    "policy_search_note": "政策检索说明",
-    "stage_timings": [
-      {"stage": "需求解析", "seconds": 0, "note": "阶段说明"}
-    ],
-    "search_log": [
-      {"category": "国家政策/省级政策/市级政策/主题政策/行业资料/成功案例", "query": "实际检索词", "status": "success/partial/no_results/failed/not_run", "used_for": "policy_sources/industry_sources/cases", "source_names": ["来源名称"]}
-    ],
-    "policy_sources": [
-      {"name": "政策名称", "issuer": "发文单位", "date": "发文时间", "url": "来源链接", "status": "已核验/待核验原文"}
-    ],
-    "industry_sources": [
-      {"name": "行业资料名称", "issuer": "发布单位", "date": "发布时间", "url": "来源链接", "status": "已核验/待核验原文"}
-    ],
-    "ref_policies_count": 0,
-    "ref_cases_count": 0,
-    "source_note": "政策来源、行业资料、案例来源详见来源清单；其余内容为模型辅助生成，需人工审核确认。",
-    "report_overview": "建设总体概况（建设情况汇报使用）",
-    "achievement_scenes": [
-      {
-        "name": "场景名称",
-        "subtitle": "一句话亮点标题",
-        "overview": "场景概述",
-        "measures": ["一是具体做法与成效", "二是具体做法与成效", "三是具体做法与成效"]
-      }
-    ],
-    "next_steps": ["下一步计划1", "下一步计划2"],
-    "conclusion": "结尾总结"
+    "review_notes": ["需人工审核项"],
+    "search_log": [],
+    "stage_timings": [],
+    "source_note": "来源说明"
   }
 }
+
+兼容字段：
+- sections.policy_background 可作为 project_basis 的兼容输入。
+- sections.overall_goal 可作为 project_goals 的兼容输入。
+- sections.modules 可作为 project_contents 的兼容输入。
 """
 
 
-FONT_SONGTI = "宋体"
-FONT_FANGSONG = "仿宋_GB2312"
-FONT_HEITI = "黑体"
-FONT_KAITI = "楷体_GB2312"
-FONT_XIAOBIAOSONG = "方正小标宋_GBK"
-CN_SUBHEADINGS = ["（一）", "（二）", "（三）", "（四）", "（五）", "（六）", "（七）", "（八）", "（九）", "（十）"]
+SUPPORTED_TYPES = {"project_report", "project_brief", "project_material", "项目汇报", "项目建议支撑材料", "立项依据材料"}
 
 
-# ── 工具函数 ──────────────────────────────────────────────
-
-def _set_run_font(run, font_name: str, size_pt: int, bold: bool = False, color: RGBColor = None):
-    run.font.name = font_name
-    run.font.size = Pt(size_pt)
-    run.font.bold = bold
-    if color:
-        run.font.color.rgb = color
-    run._element.rPr.rFonts.set(qn("w:eastAsia"), font_name)
+def _load_json(path: str) -> dict:
+    with open(path, "r", encoding="utf-8-sig") as f:
+        return json.load(f)
 
 
-def _manual_review_comment(text: str) -> str:
-    if not text:
-        return ""
-    review_markers = [
-        "待人工核查",
-        "待人工确认",
-        "待人工补充",
-        "待联网核验",
-        "待核验原文",
-        "待确认",
-        "待补充",
-        "示例数据",
-        "需根据实际",
-        "需与客户实际",
-        "需补充联网核验",
-        "需人工审核",
-    ]
-    if not any(marker in text for marker in review_markers):
-        return ""
-    if "示例数据" in text:
-        return "该数据为示例数据，请根据实际运营数据核查后替换或确认。"
-    if "待联网核验" in text or "待核验原文" in text:
-        return "该内容需要联网核验原始来源，确认后再用于正式稿。"
-    return "该内容需要人工核查确认，正式稿发布前请补充或校准。"
-
-
-def _add_review_comment(doc, run, text: str):
-    comment = _manual_review_comment(text)
-    if not comment or not hasattr(doc, "add_comment"):
-        return
-    try:
-        doc.add_comment(run, comment, author="咨询顾问-卓智", initials="ZX")
-    except Exception:
-        # 兼容旧版 python-docx：不支持批注时不影响文档生成。
-        return
-
-
-def _add_run(
-    doc,
-    paragraph,
-    text: str,
-    font_name: str = FONT_FANGSONG,
-    size_pt: int = 16,
-    bold: bool = False,
-    color: RGBColor = None,
-    comments: bool = True,
-):
-    run = paragraph.add_run(text)
-    _set_run_font(run, font_name, size_pt, bold, color)
-    if comments:
-        _add_review_comment(doc, run, text)
-    return run
-
-
-def _set_cell_text(
-    doc,
-    cell,
-    text: str,
-    font_name: str = FONT_FANGSONG,
-    size_pt: int = 16,
-    bold: bool = False,
-    comments: bool = True,
-):
-    cell.text = ""
-    p = cell.paragraphs[0]
-    _set_paragraph_format(p, first_line_indent=False)
-    _add_run(doc, p, str(text), font_name, size_pt, bold, comments=comments)
-
-
-def _setup_official_page(doc):
-    """设置方案初稿 A4 版面。"""
-    section = doc.sections[0]
-    section.page_width = Cm(21)
-    section.page_height = Cm(29.7)
-    section.top_margin = Cm(3.7)
-    section.bottom_margin = Cm(2.5)
-    section.left_margin = Cm(2.8)
-    section.right_margin = Cm(2.6)
-
-
-def _set_paragraph_format(p, first_line_indent: bool = True, space_before: int = 0, space_after: int = 0):
-    """参考公文正文格式：3号字、首行缩进2字符、1.5倍行距。"""
-    if first_line_indent:
-        p.paragraph_format.first_line_indent = Pt(32)
-    p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
-    p.paragraph_format.space_before = Pt(space_before)
-    p.paragraph_format.space_after = Pt(space_after)
-
-
-def _set_cell_shading(cell, color_hex: str):
-    tc_pr = cell._element.get_or_add_tcPr()
-    shading = tc_pr.makeelement(
-        qn("w:shd"), {qn("w:fill"): color_hex, qn("w:val"): "clear"}
-    )
-    tc_pr.append(shading)
-
-
-def _heading(doc, text, level):
-    p = doc.add_paragraph()
-    _set_paragraph_format(p, first_line_indent=True, space_before=8 if level == 1 else 0)
-    if level == 1:
-        run = _add_run(doc, p, text, FONT_HEITI, 16)
-    elif level == 2:
-        run = _add_run(doc, p, text, FONT_KAITI, 16)
-    else:
-        run = _add_run(doc, p, text, FONT_FANGSONG, 16)
-    return p
-
-
-def _strip_inline_sources(text: str) -> str:
-    """正文不内嵌来源链接，来源统一放入附录来源清单。"""
-    if not text:
-        return ""
-    text = re.sub(r"\s*[\[【]来源[:：][^\]】]+[\]】]", "", text)
-    text = re.sub(r"\s*[（(]来源[:：][^）)]+[）)]", "", text)
-    text = re.sub(r"\s*https?://\S+", "", text)
-    return text.strip()
-
-
-def _add_paragraphs(doc, text: str):
-    """将含 \\n 的长文本拆成多段落写入"""
-    for line in text.split("\n"):
-        line = _strip_inline_sources(line.strip())
-        if line:
-            p = doc.add_paragraph()
-            _set_paragraph_format(p)
-            _add_run(doc, p, line, FONT_FANGSONG, 16)
-
-
-def _strip_ordinal_prefix(text: str) -> str:
-    text = (text or "").strip()
-    pattern = r"^\s*(一是|二是|三是|四是|五是|六是|七是|八是|九是|十是)[，,、：:\s]*"
-    while re.match(pattern, text):
-        text = re.sub(pattern, "", text, count=1).strip()
-    return text
-
-
-def _add_numbered_text(doc, prefix: str, text: str):
-    p = doc.add_paragraph()
-    _set_paragraph_format(p)
-    body = _strip_ordinal_prefix(_strip_inline_sources(text))
-    _add_run(doc, p, f"{prefix}，{body}", FONT_FANGSONG, 16)
-    return p
-
-
-def _split_lead_sentence(text: str) -> tuple:
-    text = _strip_ordinal_prefix(_strip_inline_sources(text))
-    match = re.match(r"^(.{2,28}?)[。；;，,：:](.*)$", text)
-    if match:
-        lead = match.group(1).strip()
-        rest = match.group(2).strip()
-        return lead, rest
-    return text.strip(), ""
-
-
-def _add_ordinal_paragraph(doc, prefix: str, text: str):
-    p = doc.add_paragraph()
-    _set_paragraph_format(p)
-    lead, rest = _split_lead_sentence(text)
-    if lead:
-        _add_run(doc, p, f"{prefix}{lead}。", FONT_FANGSONG, 16, True, comments=False)
-        if rest:
-            _add_run(doc, p, rest, FONT_FANGSONG, 16)
-    else:
-        _add_run(doc, p, f"{prefix}{_strip_inline_sources(text)}", FONT_FANGSONG, 16, True)
-    return p
-
-
-def _make_header_row(table, headers, bg="FFFFFF"):
-    for j, h in enumerate(headers):
-        cell = table.rows[0].cells[j]
-        cell.text = h
-        _set_cell_shading(cell, bg)
-        for p in cell.paragraphs:
-            for r in p.runs:
-                _set_run_font(r, FONT_HEITI, 16, True)
-
-
-def _format_table(table):
-    table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    table.style = "Table Grid"
-    for row in table.rows:
-        for cell in row.cells:
-            for p in cell.paragraphs:
-                _set_paragraph_format(p, first_line_indent=False)
-                for r in p.runs:
-                    _set_run_font(r, FONT_FANGSONG, 16, bool(r.bold), r.font.color.rgb)
-
-
-def _subheading(index: int, text: str) -> str:
-    prefix = CN_SUBHEADINGS[index - 1] if index <= len(CN_SUBHEADINGS) else f"（{index}）"
-    return f"{prefix}{text}"
-
-
-def _enforce_policy_traceability(sections: dict):
-    """没有政策来源链接时，自动把政策引用降级为待联网核验。"""
-    policy_background = sections.get("policy_background", "")
-    policy_sources = sections.get("policy_sources") or []
-    search_log = sections.get("search_log") or []
-    ref_policies_count = sections.get("ref_policies_count", 0) or 0
-    ref_count_match = re.search(r"\d+", str(ref_policies_count))
-    ref_count = int(ref_count_match.group()) if ref_count_match else 0
-    has_policy_claims = "《" in policy_background or ref_count > 0
-
-    if has_policy_claims and not policy_sources:
-        if search_log:
-            sections["policy_search_status"] = "部分成功/待核验"
-            sections["policy_search_note"] = (
-                "已提供检索执行情况，但正文政策引用未提供可核验来源链接；请查看附录C“检索执行情况”确认每条检索的执行状态，相关政策已按待核验处理。"
-            )
-            warning = "已执行的检索记录详见附录C“检索执行情况”，但以上政策未随生成数据提供可核验来源链接，需按检索结果逐条核验原文。[待核验原文]"
-        else:
-            sections["policy_search_status"] = "未执行/缺少检索执行情况"
-            sections["policy_search_note"] = (
-                "正文包含政策引用，但未提供检索执行情况和可核验来源链接；无法判断是否已检索，已按未执行检索处理。"
-            )
-            warning = "未提供检索执行情况和政策来源链接，无法判断本次是否已执行联网检索；以上政策引用需重新检索并核验原文。[待联网核验]"
-        sections["ref_policies_count"] = 0
-        if "无法判断本次是否已执行联网检索" not in policy_background and "检索记录详见附录C" not in policy_background:
-            sections["policy_background"] = f"{policy_background}\n\n{warning}".strip()
-
-
-def _enforce_case_traceability(sections: dict):
-    """成功案例没有来源链接时，自动标注为待联网核验。"""
-    cases = sections.get("cases") or []
-    search_log = sections.get("search_log") or []
-    case_log_text = " ".join(
-        [
-            f"{item.get('query', '')} {' '.join(map(str, item.get('source_names', []) or []))}"
-            for item in search_log
-            if isinstance(item, dict) and str(item.get("category", "")).strip() == "成功案例"
-        ]
-    )
-    for case in cases:
-        if not isinstance(case, dict):
-            continue
-        name = str(case.get("name") or "").strip()
-        url = (case.get("url") or "").strip()
-        source = (case.get("source") or "").strip()
-        has_link = url.startswith(("http://", "https://")) or "http://" in source or "https://" in source
-        has_case_log = bool(name and name in case_log_text)
-        if has_link and has_case_log:
-            continue
-        if not has_link:
-            case["status"] = "待联网核验"
-            case["url"] = "未提供来源链接，不能认定为联网检索结果；请删除该案例或补充实际检索 URL。[待联网核验]"
-            case["source"] = "未提供可核验来源"
-        elif not has_case_log:
-            case["status"] = case.get("status") or "待核验原文"
-            case["url"] = f"{url}（未提供对应案例检索记录，需补充检索执行情况）"
-
-
-def _enforce_research_gate(sections: dict):
-    """缺少检索执行情况时，在附录B说明，避免误判为已按流程检索。"""
-    search_log = sections.get("search_log") or []
-    policy_sources = sections.get("policy_sources") or []
-    industry_sources = sections.get("industry_sources") or []
-    cases = sections.get("cases") or []
-    review_notes = list(sections.get("review_notes") or [])
-
-    if not search_log and (policy_sources or industry_sources or cases):
-        if sections.get("policy_search_status") == "成功":
-            sections["policy_search_status"] = "部分成功"
-        sections["policy_search_note"] = (
-            (sections.get("policy_search_note") or "").strip()
-            + "；缺少检索执行情况，无法判断是否按国家/省级/市级/主题政策分层检索。"
-        ).strip("；")
-
-    required_categories = {"国家政策", "省级政策", "市级政策", "主题政策"}
-    logged_categories = {str(item.get("category", "")).strip() for item in search_log if isinstance(item, dict)}
-    missing_categories = sorted(required_categories - logged_categories)
-    if policy_sources and missing_categories:
-        sections["policy_search_note"] = (
-            (sections.get("policy_search_note") or "").strip()
-            + f"；检索执行情况缺少分类：{'、'.join(missing_categories)}。"
-        ).strip("；")
-
-    sections["review_notes"] = review_notes
-
-
-def _source_heading(item: dict) -> str:
-    return item.get("name") or item.get("title") or item.get("source") or "未命名来源"
-
-
-def _source_fields(item: dict, issuer_label: str = "发布单位"):
-    return [
-        (issuer_label, item.get("issuer") or item.get("source") or ""),
-        ("时间", item.get("date", "")),
-        ("状态", item.get("status", "")),
-        ("来源链接", item.get("url", "")),
-    ]
-
-
-def _search_log_fields(item: dict):
-    return [
-        ("检索类别", item.get("category", "")),
-        ("检索词", item.get("query", "")),
-        ("状态", item.get("status", "")),
-        ("用于", item.get("used_for", "")),
-        ("支撑来源", "、".join(map(str, item.get("source_names", []) or []))),
-    ]
-
-
-def _verification_source_items(sections: dict) -> list:
-    items = []
-    review_notes = sections.get("review_notes") or []
-    for note in review_notes:
-        note_text = str(note).strip()
-        if not _manual_review_comment(note_text):
-            continue
-        items.append(
-            {
-                "name": note_text,
-                "issuer": "人工核查",
-                "date": "",
-                "status": "待人工确认",
-                "url": "请结合客户材料、运营台账、系统后台数据或主管部门公开信息核验。",
-            }
+def _validate_project_report(data: dict) -> None:
+    doc_type = (data.get("document_type") or "").strip()
+    if not doc_type:
+        raise ValueError("缺少必填字段：document_type")
+    if doc_type not in SUPPORTED_TYPES:
+        raise ValueError(
+            f"当前阶段只支持 document_type=project_report，不支持 {doc_type!r}。"
         )
-    if not items:
-        items.append(
-            {
-                "name": "正文示例数据、平台名称和政策依据核验",
-                "issuer": "人工核查",
-                "date": "",
-                "status": "待人工确认",
-                "url": "请结合客户材料、运营台账、系统后台数据或主管部门公开信息核验。",
-            }
-        )
-    return items
 
+    missing = [key for key in ("project_name", "region") if not data.get(key)]
+    if missing:
+        raise ValueError("缺少必填字段：" + ", ".join(missing))
 
-def _add_source_list(doc, title: str, items: list, issuer_label: str = "发布单位"):
-    if not items:
-        return
-    _heading(doc, title, 2)
-    for i, item in enumerate(items, 1):
-        if not isinstance(item, dict):
-            continue
-        p = doc.add_paragraph()
-        _set_paragraph_format(p, first_line_indent=False)
-        _add_run(doc, p, f"{i}. {_source_heading(item)}", FONT_HEITI, 16, True, comments=False)
+    data["document_type"] = "project_report"
+    data.setdefault("sections", {})
 
-        for label, value in _source_fields(item, issuer_label):
-            if not value:
-                continue
-            p = doc.add_paragraph()
-            _set_paragraph_format(p)
-            _add_run(doc, p, f"{label}：", FONT_HEITI, 16, True, comments=False)
-            _add_run(doc, p, value, FONT_FANGSONG, 16, comments=False)
 
+def generate_docx(json_path: str, output_path: str = None) -> str:
+    data = _load_json(json_path)
+    _validate_project_report(data)
 
-def _add_search_log(doc, items: list):
-    if not items:
-        return
-    _heading(doc, "检索执行情况", 2)
-    for i, item in enumerate(items, 1):
-        if not isinstance(item, dict):
-            continue
-        p = doc.add_paragraph()
-        _set_paragraph_format(p, first_line_indent=False)
-        _add_run(doc, p, f"{i}. {item.get('query', '未填写检索词')}", FONT_HEITI, 16, True, comments=False)
+    from docx_generators.project_report import build_docx
 
-        for label, value in _search_log_fields(item):
-            if not value:
-                continue
-            p = doc.add_paragraph()
-            _set_paragraph_format(p)
-            _add_run(doc, p, f"{label}：", FONT_HEITI, 16, True, comments=False)
-            _add_run(doc, p, str(value), FONT_FANGSONG, 16, comments=False)
+    return build_docx(data, output_path)
 
 
-def _format_seconds(value) -> str:
-    try:
-        seconds = float(value)
-    except (TypeError, ValueError):
-        return str(value or "未记录")
-    if seconds < 60:
-        return f"{seconds:.1f}秒"
-    minutes = int(seconds // 60)
-    remain = seconds - minutes * 60
-    return f"{minutes}分{remain:.1f}秒"
-
-
-def _add_stage_timings(doc, items: list):
-    if not items:
-        return
-    _heading(doc, "阶段用时", 2)
-    t = doc.add_table(rows=len(items) + 1, cols=3)
-    _format_table(t)
-    _make_header_row(t, ["阶段", "用时", "说明"])
-    for i, item in enumerate(items, 1):
-        if not isinstance(item, dict):
-            continue
-        t.rows[i].cells[0].text = str(item.get("stage", "未命名阶段"))
-        t.rows[i].cells[1].text = _format_seconds(item.get("seconds", "未记录"))
-        t.rows[i].cells[2].text = str(item.get("note", ""))
-    _format_table(t)
-
-
-def _appendix_heading(doc, title: str):
-    doc.add_page_break()
-    _heading(doc, title, 1)
-
-
-def _clean_report_project_name(project_name: str) -> str:
-    name = re.sub(r"^关于", "", project_name or "").strip(" 　")
-    name = re.sub(r"(建设情况的?汇报|建设情况汇报|工作汇报|成效汇报)$", "", name).strip(" 　")
-    return name
-
-
-def _report_title(project_name: str) -> str:
-    if project_name.startswith("关于") and "汇报" in project_name and "建设建设情况" not in project_name:
-        return project_name
-    name = _clean_report_project_name(project_name)
-    if name.endswith("建设"):
-        return f"关于{name}情况的汇报"
-    return f"关于{name}建设情况的汇报"
-
-
-def _normalize_report_sections(data: dict, sections: dict):
-    review_notes = list(sections.get("review_notes", []))
-    for note in _missing_report_notes(sections):
-        if note not in review_notes:
-            review_notes.append(note)
-    sections["review_notes"] = review_notes
-    sections.setdefault(
-        "source_note",
-        "政策来源、行业资料、案例来源详见来源清单；未提供实际运营数据时，正文指标为示例数据或待确认项，需人工审核确认。",
-    )
-
-
-def _missing_report_notes(sections: dict) -> list:
-    notes = []
-    if not sections.get("report_overview"):
-        notes.append("建设总体概况未提供，需结合客户材料、运营数据或联网检索结果补充")
-    if not sections.get("achievement_scenes"):
-        notes.append("场景建设成效未提供，需从用户材料、图片OCR、知识库或联网检索结果中提取场景后补充")
-    if not sections.get("next_steps"):
-        notes.append("下一步工作计划未提供，需结合当地规划、政策要求和项目实际补充")
-    notes.append("正文中的示例指标、平台名称、AI助手名称和政策依据需根据客户材料或公开来源核验")
-    return notes
-
-
-def _is_achievement_report(data: dict, sections: dict) -> bool:
-    doc_type = (data.get("document_type") or sections.get("document_type") or "").lower()
-    project_name = data.get("project_name", "")
-    return (
-        doc_type in {"achievement_report", "report", "work_report", "建设情况汇报", "成效汇报"}
-        or "建设情况" in project_name
-        or "汇报" in project_name
-    )
-
-
-def _is_project_report(data: dict, sections: dict) -> bool:
-    doc_type = (data.get("document_type") or sections.get("document_type") or "").lower()
-    if doc_type in {"project_report", "project_brief", "project_material", "项目汇报", "项目建议支撑材料", "立项依据材料"}:
-        return True
-    return bool(sections.get("project_basis") or sections.get("project_goals") or sections.get("project_contents"))
-
-
-def _extension_enabled(sections: dict, key: str) -> bool:
-    extensions = sections.get("extensions") or {}
-    return bool(extensions.get(key) or sections.get(key))
-
-
-def _add_optional_extensions(doc, sections: dict):
-    """项目需求阶段方案默认不写实施计划和预算；用户明确要求时才输出扩展章节。"""
-    if _extension_enabled(sections, "include_implementation_advice"):
-        _heading(doc, "扩展A：实施建议", 1)
-        phases = sections.get("phases", [])
-        if phases:
-            t = doc.add_table(rows=len(phases) + 1, cols=4)
-            _format_table(t)
-            _make_header_row(t, ["阶段建议", "周期建议", "重点工作", "建议成果"])
-            for i, ph in enumerate(phases, 1):
-                t.rows[i].cells[0].text = ph.get("name", "")
-                t.rows[i].cells[1].text = ph.get("duration", "")
-                t.rows[i].cells[2].text = ph.get("content", "")
-                t.rows[i].cells[3].text = ph.get("deliverables", "")
-            _format_table(t)
-        else:
-            _add_paragraphs(doc, "本初稿暂不包含实施建议。若进入方案深化或投标阶段，可结合客户建设边界、工期要求和交付资源补充。")
-
-    if _extension_enabled(sections, "include_budget_framework"):
-        _heading(doc, "扩展B：预算测算框架", 1)
-        items = sections.get("budget_items", [])
-        if items:
-            t = doc.add_table(rows=len(items) + 2, cols=4)
-            _format_table(t)
-            _make_header_row(t, ["序号", "建设内容", "预算（万元）", "备注"])
-            for i, item in enumerate(items, 1):
-                t.rows[i].cells[0].text = str(i)
-                t.rows[i].cells[1].text = item.get("name", "")
-                t.rows[i].cells[2].text = item.get("amount", "待定")
-                t.rows[i].cells[3].text = item.get("note", "")
-            last = t.rows[-1]
-            last.cells[1].text = "合计"
-            last.cells[2].text = "待定"
-            for c in last.cells:
-                for p in c.paragraphs:
-                    for r in p.runs:
-                        _set_run_font(r, FONT_HEITI, 16, True)
-            _format_table(t)
-        warn = doc.add_paragraph()
-        _set_paragraph_format(warn)
-        _add_run(doc, warn, "注：预算测算仅作为项目需求阶段沟通口径，具体报价需由商务部门确认。", FONT_FANGSONG, 16)
-
-    if _extension_enabled(sections, "include_operation_advice"):
-        _heading(doc, "扩展C：运维运营建议", 1)
-        _add_paragraphs(doc, sections.get("operation_advice", "【待结合客户组织架构、平台运营机制和服务范围补充】"))
-
-
-def _add_common_appendices(doc, customer_type: str, region: str, sections: dict, stage: str = "项目需求阶段"):
-    _appendix_heading(doc, "附录A：人工审核提示")
-    default_reviews = [
-        "政策引用是否准确（请核对原文及文号）",
-        "产品模块匹配是否与公司最新产品清单一致",
-        "是否需要补充实施、预算、运维等扩展章节",
-        "方案创新点建议资深顾问补充差异化设计",
-        "客户承诺与量化指标需确认可达性",
-        "竞对策略如需补充请人工添加",
-    ]
-    for item in sections.get("review_notes", default_reviews):
-        p = doc.add_paragraph()
-        _set_paragraph_format(p)
-        _add_run(doc, p, f"[ ] {item}", FONT_FANGSONG, 16, comments=False)
-
-    _appendix_heading(doc, "附录B：生成说明")
-    info_t = doc.add_table(rows=10, cols=2)
-    _format_table(info_t)
-    info_data = [
-        ("项目阶段", stage),
-        ("客户类型", customer_type),
-        ("区域", region),
-        ("参考历史方案", sections.get("ref_proposals", "无（知识库未接入）")),
-        ("匹配产品模块", sections.get("ref_products", "无")),
-        ("政策检索状态", sections.get("policy_search_status", "未说明")),
-        ("政策检索说明", sections.get("policy_search_note", "未说明")),
-        ("引用政策数量", f"{sections.get('ref_policies_count', 0)} 条"),
-        ("引用案例数量", f"{sections.get('ref_cases_count', 0)} 个"),
-        ("内容来源说明", sections.get("source_note", "政策来源、行业资料、案例来源详见来源清单；其余内容为模型辅助生成，需人工审核确认。")),
-    ]
-    for i, (k, v) in enumerate(info_data):
-        _set_cell_text(doc, info_t.rows[i].cells[0], k, FONT_HEITI, 16, True, comments=False)
-        _set_cell_text(doc, info_t.rows[i].cells[1], v, FONT_FANGSONG, 16, comments=False)
-    _format_table(info_t)
-    _add_stage_timings(doc, sections.get("stage_timings", []))
-
-    source_groups = [
-        ("政策来源", sections.get("policy_sources", []), "发文单位"),
-        ("行业资料来源", sections.get("industry_sources", []), "发布单位"),
-        ("案例来源", sections.get("cases", []), "来源"),
-        ("待核查项清单", _verification_source_items(sections), "核查类型"),
-    ]
-    _appendix_heading(doc, "附录C：来源清单")
-    _add_search_log(doc, sections.get("search_log", []))
-    for title, items, issuer_label in source_groups:
-        _add_source_list(doc, title, items, issuer_label)
-
-    disclaimer = doc.add_paragraph()
-    _set_paragraph_format(disclaimer, space_before=12)
-    _add_run(doc, disclaimer, "本方案初稿由「咨询顾问-卓智」数字员工辅助生成，所有内容需经人工审核确认后方可使用。", FONT_FANGSONG, 16, comments=False)
-
-
-def _save_doc(doc, output_path: str, region: str, project_name: str) -> str:
-    if not output_path:
-        today = date.today().strftime("%Y%m%d")
-        safe = lambda t: t.replace("/", "_").replace("\\", "_").replace(" ", "")
-        output_path = f"ZX01_{safe(region)}_{safe(project_name[:10])}_解决方案_初稿_{today}.docx"
-
-    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
-    doc.save(output_path)
-    return os.path.abspath(output_path)
-
-
-# ── 主函数 ────────────────────────────────────────────────
-
-def build_proposal_docx(data: dict, output_path: str = None) -> str:
-    project_name = data["project_name"]
-    customer_name = data["customer_name"]
-    customer_type = data.get("customer_type") or "政务服务中心"
-    stage = data.get("stage") or data.get("project_stage") or "项目需求阶段"
-    region = data["region"]
-    s = data.get("sections", {})
-    is_project_report = _is_project_report(data, s)
-    if is_project_report:
-        from docx_generators.project_report import build_docx as build_project_report_docx
-
-        return build_project_report_docx(data, output_path)
-
-    is_report = _is_achievement_report(data, s)
-    if is_report and not is_project_report:
-        _normalize_report_sections(data, s)
-    _enforce_research_gate(s)
-    _enforce_policy_traceability(s)
-    _enforce_case_traceability(s)
-
-    doc = Document()
-    _setup_official_page(doc)
-
-    # 全局字体
-    style = doc.styles["Normal"]
-    style.font.name = FONT_FANGSONG
-    style.font.size = Pt(16)
-    style.element.rPr.rFonts.set(qn("w:eastAsia"), FONT_FANGSONG)
-    style.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
-
-    # ───── 封面 ─────
-    title_p = doc.add_paragraph()
-    title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    _set_paragraph_format(title_p, first_line_indent=False, space_after=8)
-    if is_report:
-        title_text = _report_title(project_name)
-    else:
-        title_text = f"《{project_name}》\n解决方案"
-    _add_run(doc, title_p, title_text, FONT_XIAOBIAOSONG, 22, True)
-
-    sub_p = doc.add_paragraph()
-    sub_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    _set_paragraph_format(sub_p, first_line_indent=False, space_after=24)
-    _add_run(doc, sub_p, "（初稿）", FONT_FANGSONG, 16)
-
-    # 元信息
-    meta_table = doc.add_table(rows=4, cols=4)
-    _format_table(meta_table)
-    meta_rows = [
-        ("编制单位", "卓繁信息集团股份有限公司", "目标客户", customer_name),
-        ("客户类型", customer_type, "区域", region),
-        ("项目阶段", stage, "版本", "V0.1"),
-        ("编制日期", date.today().strftime("%Y年%m月%d日"), "", ""),
-    ]
-    for i, (k1, v1, k2, v2) in enumerate(meta_rows):
-        cells = meta_table.rows[i].cells
-        cells[0].text = k1
-        cells[1].text = v1
-        if k2:
-            cells[2].text = k2
-            cells[3].text = v2
-        for j in [0, 2]:
-            if cells[j].text:
-                for p in cells[j].paragraphs:
-                    for r in p.runs:
-                        _set_run_font(r, FONT_HEITI, 16, True)
-    _format_table(meta_table)
-
-    doc.add_paragraph("")
-
-    if is_report:
-        _heading(doc, "一、建设总体概况", 1)
-        _add_paragraphs(doc, s.get("report_overview") or s.get("current_status", "【待补充建设总体概况】"))
-
-        _heading(doc, "二、场景建设成效", 1)
-        scenes = s.get("achievement_scenes") or []
-        if scenes:
-            ordinals = ["一是", "二是", "三是", "四是", "五是", "六是", "七是"]
-            for i, scene in enumerate(scenes, 1):
-                title = scene.get("name", f"场景{i}")
-                subtitle = scene.get("subtitle", "")
-                _heading(doc, f"{title}：{subtitle}" if subtitle else title, 2)
-                if scene.get("overview"):
-                    _add_paragraphs(doc, scene["overview"])
-                for j, measure in enumerate(scene.get("measures", [])):
-                    prefix = ordinals[j] if j < len(ordinals) else f"第{j+1}，"
-                    _add_ordinal_paragraph(doc, prefix, measure)
-        else:
-            p = doc.add_paragraph()
-            _set_paragraph_format(p)
-            _add_run(doc, p, "【待补充场景建设成效】", FONT_FANGSONG, 16)
-
-        _heading(doc, "三、下一步工作计划", 1)
-        ordinals = ["一是", "二是", "三是", "四是", "五是", "六是"]
-        for i, step in enumerate(s.get("next_steps", [])):
-            prefix = ordinals[i] if i < len(ordinals) else f"第{i+1}，"
-            _add_ordinal_paragraph(doc, prefix, step)
-
-        if s.get("conclusion"):
-            _add_paragraphs(doc, s["conclusion"])
-
-        _add_common_appendices(doc, customer_type, region, s, stage)
-        return _save_doc(doc, output_path, region, project_name)
-
-    # ───── 一、现状分析 ─────
-    _heading(doc, "一、现状分析", 1)
-
-    _heading(doc, _subheading(1, "政策背景"), 2)
-    _add_paragraphs(doc, s.get("policy_background", "【待补充】"))
-
-    _heading(doc, _subheading(2, "现状概述"), 2)
-    _add_paragraphs(doc, s.get("current_status", "【待调研补充】"))
-
-    _heading(doc, _subheading(3, "痛点问题"), 2)
-    ordinals = ["一是", "二是", "三是", "四是", "五是", "六是", "七是"]
-    for i, pt in enumerate(s.get("pain_points", [])):
-        prefix = ordinals[i] if i < len(ordinals) else f"第{i+1}，"
-        _add_numbered_text(doc, prefix, pt)
-
-    # ───── 二、建设目标 ─────
-    _heading(doc, "二、建设目标", 1)
-
-    _heading(doc, _subheading(1, "总体目标"), 2)
-    _add_paragraphs(doc, s.get("overall_goal", "【待补充】"))
-
-    _heading(doc, _subheading(2, "分项目标"), 2)
-    for g in s.get("sub_goals", []):
-        p = doc.add_paragraph()
-        _set_paragraph_format(p)
-        _add_run(doc, p, g, FONT_FANGSONG, 16)
-
-    # ───── 三、建设内容 ─────
-    _heading(doc, "三、建设内容", 1)
-    for i, mod in enumerate(s.get("modules", []), 1):
-        _heading(doc, _subheading(i, mod["name"]), 2)
-        _add_paragraphs(doc, mod.get("content", ""))
-        prod_p = doc.add_paragraph()
-        _set_paragraph_format(prod_p)
-        _add_run(doc, prod_p, f"【产品匹配】{mod.get('product', '待确认')}", FONT_FANGSONG, 16, True)
-
-    # ───── 四、技术架构 ─────
-    _heading(doc, "四、技术架构", 1)
-
-    _heading(doc, _subheading(1, "总体架构"), 2)
-    arch = s.get("architecture", "")
-    if arch:
-        _add_paragraphs(doc, arch)
-    else:
-        for layer in [
-            "基础设施层：政务云、网络、计算存储等基础资源",
-            "数据资源层：数据采集、治理、共享交换、数据中台",
-            "应用支撑层：统一身份认证、工作流引擎、消息中心、开发框架",
-            "业务应用层：各业务子系统与应用模块",
-            "展示层：领导驾驶舱、门户网站、移动端",
-        ]:
-            p = doc.add_paragraph()
-            _set_paragraph_format(p)
-            _add_run(doc, p, layer, FONT_FANGSONG, 16)
-        doc.add_paragraph("")
-        p = doc.add_paragraph()
-        _set_paragraph_format(p)
-        _add_run(doc, p, "两大支撑体系：标准规范体系、安全保障体系。", FONT_FANGSONG, 16)
-
-    _heading(doc, _subheading(2, "技术选型"), 2)
-    _add_paragraphs(doc, s.get("tech_selection", "【待补充技术选型说明】"))
-
-    # ───── 五、方案亮点与预期效益 ─────
-    _heading(doc, "五、方案亮点与预期效益", 1)
-
-    _heading(doc, _subheading(1, "方案亮点"), 2)
-    for h in s.get("highlights", []):
-        p = doc.add_paragraph()
-        _set_paragraph_format(p)
-        _add_run(doc, p, h, FONT_FANGSONG, 16)
-
-    _heading(doc, _subheading(2, "预期效益"), 2)
-    for b in s.get("benefits", []):
-        p = doc.add_paragraph()
-        _set_paragraph_format(p)
-        _add_run(doc, p, b, FONT_FANGSONG, 16)
-
-    # ───── 六、成功案例参考 ─────
-    _heading(doc, "六、成功案例参考", 1)
-    cases = s.get("cases", [])
-    if cases:
-        for case in cases:
-            p = doc.add_paragraph()
-            _set_paragraph_format(p)
-            _add_run(doc, p, case.get("name", ""), FONT_FANGSONG, 16, True)
-            if case.get("summary"):
-                p = doc.add_paragraph()
-                _set_paragraph_format(p)
-                _add_run(doc, p, _strip_inline_sources(case["summary"]), FONT_FANGSONG, 16)
-    else:
-        p = doc.add_paragraph()
-        _set_paragraph_format(p)
-        _add_run(doc, p, "【待补充成功案例】", FONT_FANGSONG, 16)
-
-    _add_optional_extensions(doc, s)
-
-    _add_common_appendices(doc, customer_type, region, s, stage)
-
-    # ───── 保存 ─────
-    return _save_doc(doc, output_path, region, project_name)
-
-
-# ── CLI 入口 ──────────────────────────────────────────────
-
-def main():
+def main() -> None:
     start_time = time.perf_counter()
-    parser = argparse.ArgumentParser(description="ZX-01 方案初稿 Word 生成器")
+    parser = argparse.ArgumentParser(description="ZX-01 项目汇报 Word 生成器")
     parser.add_argument("--json", default=None, help="输入 JSON 文件路径")
     parser.add_argument("--output", default=None, help="输出 .docx 路径（可选）")
     parser.add_argument("--schema", action="store_true", help="打印输入 JSON 结构说明")
     args = parser.parse_args()
 
     if args.schema:
-        print(SCHEMA)
+        print(SCHEMA.strip())
         return
 
     if not args.json:
         parser.error("the following arguments are required: --json")
 
-    with open(args.json, "r", encoding="utf-8-sig") as f:
-        data = json.load(f)
+    try:
+        path = generate_docx(args.json, args.output)
+    except Exception as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(1)
 
-    path = build_proposal_docx(data, args.output)
     elapsed = time.perf_counter() - start_time
     print(path)
     print(f"word_output_seconds={elapsed:.2f}")

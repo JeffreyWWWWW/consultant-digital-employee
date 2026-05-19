@@ -1,66 +1,54 @@
 ---
 name: zhuofan-proposal-generator
 description: |-
-  智能方案初稿生成（ZX-01）。当用户发送数字政府、政务服务、数据治理、一网统管、数据共享交换等项目方案需求时激活，包括一句话需求、会议纪要、招标/采购材料、截图、聊天记录或历史方案参考。
-  按“用户需求解析 -> 历史资产复用 -> Tavily/百度/政府网站主动检索 -> 内容映射 -> 专家化写作 -> 质检修正 -> Word 输出”的流程，生成可人工复核的卓繁方案初稿、汇报材料或相关交付物。
+  智能方案初稿生成（ZX-01）。当前阶段聚焦项目需求阶段的项目汇报/项目建议支撑材料。当用户提供项目需求、会议纪要、沟通材料、历史方案参考等，并要求生成项目汇报或需求阶段材料时激活。
+  按“用户需求解析 -> 历史资产复用 -> 必要资料检索 -> 内容映射 -> 专家化写作 -> 质检修正 -> Word 输出”的流程，生成可人工复核的项目汇报稿。
 ---
 
 # 智能方案初稿生成（ZX-01）
 
-本 Skill 用于把用户需求、历史方案资产和主动联网检索资料加工成卓繁信息集团风格的方案初稿。默认定位是“项目需求阶段建议型初稿”，供顾问复核和深化，不替代核心方案决策。
+本 Skill 当前用于把用户需求、历史方案资产和必要检索资料加工成“项目需求阶段项目汇报稿”。它服务于顾问在需求沟通、内部评审、立项支撑或客户汇报前快速形成建议型初稿，不替代核心方案决策。
 
 ## 适用范围
 
 激活本 Skill：
 
-- 用户要求写方案、生成方案、出方案初稿、整理汇报材料；
-- 用户提供项目名称、会议纪要、招标/采购材料、需求截图或聊天记录；
-- 用户要求结合历史方案、产品能力、政策依据生成数字政府类材料；
-- 场景属于政务服务、数据治理、一网统管、数据共享交换、营商环境、智能帮办等。
-
-不适用：
-
-- 正式法定公文，如通知、请示、函、正式报告；
-- 单纯政策问答、资料查找；
-- 完整投标文件主标生成；
-- 只做 PPT 成品设计的任务。
+- 用户要求生成项目需求阶段的项目汇报、项目建议支撑材料或汇报稿；
+- 用户提供项目名称、会议纪要、沟通材料、需求截图、历史方案参考或任务材料；
+- 用户需要把零散需求、沟通材料或历史资产加工成可复核的项目汇报初稿；
+- 当前任务目标是支撑项目需求沟通、内部评审、立项论证或客户汇报。
 
 ## Reference 调用规则
 
-`SKILL.md` 只负责编排和闸门控制。细则按需读取以下 reference：
+`SKILL.md` 只负责编排和闸门控制。具体规则按执行顺序读取以下 reference：
 
-| 阶段 | 必读 reference | 用途 |
+| 顺序 | reference | 什么时候用 |
 |---|---|---|
-| 总流程、历史资产、内容映射 | `references/proposal-generation-playbook.md` | 规定新需求如何从输入加工成成品 |
-| 政策/案例/行业资料检索 | `references/policy-web-search.md` | 生成检索词、筛选来源、处理失败降级 |
-| 交付物类型路由 | `references/proposal-routing.md` | 判断本次 `document_type` |
-| 项目汇报结构 | `references/structures/project-report.md` | `document_type=project_report` 时只读此结构 |
-| 解决方案初稿结构 | `references/structures/solution-draft.md` | `document_type=solution` 或完整方案时读取 |
-| 建设情况汇报结构 | `references/structures/achievement-report.md` | `document_type=achievement_report` 时读取 |
-| 正文写作与去 AI 化 | `references/prompt-templates.md` | 控制专家写法、客户类型侧重点和语言风格 |
-| 质量检查路由 | `references/quality-routing.md` | 根据 `document_type` 选择 checklist |
-| 项目汇报质检 | `references/quality/project-report-checklist.md` | `document_type=project_report` 时只读此清单 |
-| 解决方案初稿质检 | `references/quality/solution-draft-checklist.md` | `document_type=solution` 时只读此清单 |
-| 建设情况汇报质检 | `references/quality/achievement-report-checklist.md` | `document_type=achievement_report` 时只读此清单 |
+| 1. 作业流程 | `references/workflow/proposal-generation-playbook.md` | 开始任务时读取，用来控制需求解析、历史资产复用、内容映射、质检修正等整体步骤 |
+| 2. 交付物类型路由 | `references/routing/proposal-routing.md` | 需求解析后读取，用来判断本次材料属于项目汇报、解决方案、招投标方案等哪类交付物 |
+| 3. 项目汇报结构 | `references/structures/project-report.md` | 路由结果为 `project_report` 且当前阶段继续处理时读取，用来确定项目汇报稿的标题、章节和写作要求 |
+| 4. 政策/资料/案例检索 | `references/search/policy-web-search.md` | 需要引用外部政策、资料、数据或案例时读取，用来生成检索词、筛选来源和标注核验状态 |
+| 5. 顾问写作与润色规则 | `references/writing/consultant-writing-rules.md` | 生成内容和润色时读取，用来控制项目材料表达方式，避免套话、空话和 AI 腔 |
+| 6. 质量检查路由 | `references/routing/quality-routing.md` | 输出前读取，用来根据交付物类型选择对应质检清单 |
 
 执行原则：
 
-- 生成新方案前，必须先按 `proposal-generation-playbook.md` 完成需求解析、历史资产复用、外部检索、内容映射和交付物路由。
-- 需要引用政策、行业资料、统计数据、标准规范或成功案例时，必须遵守 `policy-web-search.md`。
-- 先读取 `proposal-routing.md` 判断文档类型，再只读取对应的 `structures/*.md`；不要一次性加载全部结构。
-- 如果路由为 `project_report`，结构只按 `structures/project-report.md`，Word 生成只走 `scripts/docx_generators/project_report.py`。
-- 写正文和润色时，按 `prompt-templates.md` 控制风格。
-- 输出前必须先读取 `quality-routing.md`，再只按对应 checklist 形成 `review_notes` 并修正 JSON。
+- 生成项目汇报稿前，必须先按 `workflow/proposal-generation-playbook.md` 完成需求解析、历史资产复用、必要检索、内容映射和交付物判断。
+- 需要引用政策、行业资料、统计数据、标准规范或成功案例时，必须遵守 `search/policy-web-search.md`。
+- 先读取 `routing/proposal-routing.md` 判断本次交付物类型；当前阶段只继续处理 `project_report`，其他类型先追问或说明暂不展开。
+- 当前阶段项目汇报结构只按 `structures/project-report.md`，Word 生成只走 `scripts/docx_generators/project_report.py`。
+- 生成内容和润色时，按 `writing/consultant-writing-rules.md` 控制风格。
+- 输出前必须先读取 `routing/quality-routing.md` 选择质检清单，形成 `review_notes` 并修正 JSON。
 
 ## 主流程
 
-必须按以下顺序执行，不得直接套模板写正文：
+必须按以下顺序执行，不得直接套模板写内容：
 
 ```text
 需求解析
 → 历史资产召回与复用筛选
-→ Tavily/百度/政府网站检索政策、行业资料和案例
-→ 产品库/案例库匹配
+→ 必要资料检索与来源核验
+→ 产品、能力或案例匹配
 → 需求到建设内容映射
 → 生成初稿 JSON
 → 自动质检审稿
@@ -74,22 +62,19 @@ description: |-
 
 必须提取：
 
-- 客户单位、客户类型、区域、行业；
+- 客户单位、客户类型、区域、行业或业务领域；
 - 核心需求、项目阶段、交付物类型；
 - 目标用户、服务渠道、事项范围；
 - 关键词、输入材料类型、用户明确要求或禁止内容。
 
-缺少“区域 + 核心需求”且无法从材料判断时，必须追问。客户类型缺失时可默认政务服务中心，但要标注待确认。用户同时提到“方案”和“汇报”且交付物不清时，追问最终用途。
+缺少“区域 + 核心需求”且无法从材料判断时，必须追问。客户类型缺失时标注待确认；如材料中明显指向某类客户，可基于材料推断并标注依据。用户同时提到“方案”和“汇报”且交付物不清时，追问最终用途。
 
 交付物路由闸门：
 
-- `project_report` 表示项目需求阶段的项目汇报、项目建议支撑材料或方案初稿。
-- 目标是向领导、客户或内部评审说明“为什么建、准备建什么、依据是什么”。
-- 会议纪要、沟通纪要、任务安排、需求文档、聊天记录只是输入材料类型，不能单独作为判定依据。
-- “生成材料”“出个初稿”“做成 Word”“下周要方案”等只是交付动作或时间要求，不能单独决定文档类型。
-- 只有材料内容明确指向项目需求阶段建设汇报、建议支撑或方案初稿，且没有明确要求完整技术方案、实施计划、预算、项目组织或投标响应时，才路由为 `project_report`。
-- 如果只是普通会议整理、沟通纪要润色、任务安排转 Word、需求文档排版或无法判断最终用途，必须先追问或按用户更明确的文档类型处理。
-- 路由为 `project_report` 时，JSON 的 `document_type` 必须写 `project_report`，只读取 `references/structures/project-report.md`，标题不得加《》或“解决方案”，文件名使用 `ZX01_{区域}_{项目简称}_汇报稿_{日期}.docx`。
+- 必须先读取 `references/routing/proposal-routing.md` 判断 `document_type`。
+- 不得仅凭输入材料类型、交付动作或时间要求自行推断文档类型。
+- 当前阶段仅处理 `project_report`；确认属于项目汇报后，根据 `routing/quality-routing.md` 读取对应质检清单，并使用项目汇报结构和生成器规则。
+- `SKILL.md` 不维护具体路由条件、标题规则、文件名规则或章节细则。
 
 ### 2. 历史资产复用
 
@@ -110,26 +95,24 @@ description: |-
 
 ### 3. 主动外部检索
 
-政策、行业资料、标准规范、统计数据和成功案例不是默认由用户提供，必须由 Skill 主动通过 Tavily、百度、政府网站或当前可用检索工具获取。
+政策、行业资料、标准规范、统计数据和成功案例不是默认由用户提供。凡是要写入材料作为依据、案例或事实支撑的内容，都必须先通过知识库、联网检索或用户材料核验。
 
-最低检索范围：
+检索范围按本次 `document_type`、材料用途和内容需要确定，并遵守 `references/search/policy-web-search.md`：
 
-- 国家级政策；
-- 省市级政策；
-- 区县级政策；
-- 主题专项政策；
-- 行业资料或标准规范；
-- 拟写入正文的同类案例。
+- 需要引用政策时，检索并记录对应政策来源；
+- 需要引用行业资料、标准规范或统计数据时，检索并记录来源；
+- 需要写入案例时，检索或查案例库并记录核验状态；
+- 不需要引用的内容，不为了满足流程强行检索。
 
-所有检索必须写入 `search_log`。没有成功检索或没有来源链接时，不得写成“已依据”或“已核验”。
+所有检索或核验过程必须写入 `search_log`。没有成功检索或没有来源链接时，不得写成“已依据”或“已核验”。
 
-### 4. 产品/案例匹配
+### 4. 产品、能力或案例匹配
 
-优先查产品库和案例库。产品能力无法确认时，写能力模块并标注 `待确认`，不得虚构产品名称或能力。案例库不可用时，使用联网检索补足；仍无法核验时删除案例或标注 `待联网核验`。
+按本次交付物需要查产品库、能力清单和案例库。产品能力无法确认时，写能力模块并标注 `待确认`，不得虚构产品名称或能力。需要写入案例时，优先查案例库或联网检索；仍无法核验时删除案例或标注 `待联网核验`。
 
 ### 5. 内容映射
 
-生成正文前必须形成 `content_mapping`：
+生成内容前必须形成 `content_mapping`：
 
 ```text
 用户需求/会议纪要
@@ -147,32 +130,23 @@ description: |-
 
 ### 6. JSON 初稿
 
-先生成结构化 JSON，再生成 Word。JSON 至少包含：
+先生成结构化 JSON，再生成 Word。
+
+公共字段至少包含：
 
 - `requirement_parse`
 - `historical_asset_review`
 - `content_mapping`
-- `sections.policy_background`
-- `sections.current_status`
-- `sections.pain_points`
-- `sections.overall_goal`
-- `sections.sub_goals`
-- `sections.modules`
-- `sections.highlights`
-- `sections.benefits`
-- `sections.cases`
 - `sections.review_notes`
 - `sections.search_log`
-- `sections.policy_sources`
-- `sections.industry_sources`
 - `sections.stage_timings`
 - `sections.source_note`
 
-`sections.modules[].product` 必须来自产品库、历史材料或用户材料；无法确认时写 `待确认`。
+内容 sections 字段按本次 `document_type` 对应的 structure 和生成器要求组织，不在 `SKILL.md` 固定完整清单。产品或能力映射必须来自产品库、历史材料或用户材料；无法确认时写 `待确认`。
 
 ### 7. 质检与修正
 
-生成 Word 前必须按 `quality-routing.md` 选择对应 checklist 审稿，并根据结果修正 JSON。
+生成 Word 前必须先按 `routing/quality-routing.md` 选择 checklist，并根据结果修正 JSON。
 
 重点检查：
 
@@ -186,26 +160,22 @@ description: |-
 
 ## Word 输出
 
-方案内容生成完毕后，默认输出 `.docx`，不要在对话中贴全文。
+材料内容生成完毕后，默认输出 `.docx`，不要在对话中贴全文。
 
 生成方式：
 
 ```bash
-# 解决方案初稿
-python scripts/generate_docx.py --json /tmp/proposal_data.json --output ~/output/ZX01_{区域}_{项目简称}_解决方案_初稿_{日期}.docx
-
-# 项目汇报/项目建议支撑材料
-python scripts/generate_docx.py --json /tmp/proposal_data.json --output ~/output/ZX01_{区域}_{项目简称}_汇报稿_{日期}.docx
+python scripts/generate_docx.py --json /tmp/proposal_data.json --output {项目汇报文件名}.docx
 ```
 
-脚本位置：`scripts/generate_docx.py`。
+脚本入口：`scripts/generate_docx.py`。当前阶段只支持 `project_report`，入口脚本负责读取 JSON 和校验类型，实际 Word 生成由 `scripts/docx_generators/project_report.py` 完成。
 
-发送文件后的最后一条对话消息必须包含固定交付说明。不得省略“总用时”和“阶段用时”；无法精确记录时写“未记录”，不能整段不写。
+发送文件后的最后一条对话消息必须包含交付说明。不得省略“总用时”和“阶段用时”；无法精确记录时写“未记录”，不能整段不写。
 
-固定格式：
+基础格式：
 
 ```text
-方案初稿已生成，请查收文件。
+{交付物名称}已生成，请查收文件。
 
 文件：{文件名}.docx
 总用时：{X分Y秒 / Y秒 / 未记录}
@@ -214,7 +184,7 @@ python scripts/generate_docx.py --json /tmp/proposal_data.json --output ~/output
 - 需求解析：{X秒 / 未记录}
 - 历史资产复用：{X秒 / 未记录}
 - 联网检索：{X秒 / 未记录}
-- 产品/案例匹配：{X秒 / 未记录}
+- 产品/能力/案例匹配：{X秒 / 未记录}
 - 内容映射：{X秒 / 未记录}
 - JSON 初稿：{X秒 / 未记录}
 - 质检审稿：{X秒 / 未记录}
@@ -224,9 +194,9 @@ python scripts/generate_docx.py --json /tmp/proposal_data.json --output ~/output
 
 参考来源：
 - 历史方案：{方案名称 / 未命中 / 未提供}
-- 匹配产品：{产品或能力列表 / 待确认}
-- 引用政策：{N}条（来源详见文档来源清单；未核验则写待核验）
-- 参考案例：{N}个（未核验则写待核验）
+- 匹配产品或能力：{产品或能力列表 / 待确认 / 不适用}
+- 引用政策或资料：{N}条（无则写未引用；未核验则写待核验）
+- 参考案例：{N}个（无则写未引用；未核验则写待核验）
 
 需要人工重点审核：
 - {待确认事项1}
@@ -238,7 +208,7 @@ python scripts/generate_docx.py --json /tmp/proposal_data.json --output ~/output
 - 需求解析；
 - 历史资产复用；
 - 联网检索；
-- 产品/案例匹配；
+- 产品/能力/案例匹配；
 - 内容映射；
 - JSON 初稿；
 - 质检审稿；
@@ -257,7 +227,7 @@ python scripts/generate_docx.py --json /tmp/proposal_data.json --output ~/output
 - 不把历史方案中的政策和数据直接当作本次事实。
 - 不上传或外泄政府项目、客户材料、内部方案等敏感数据。
 - 不替代顾问做报价、承诺性指标、商务策略和最终方案决策。
-- 不在正文内嵌 URL、长链接或 `[来源：...]`，来源统一进入附录C。
+- 不在材料内容中内嵌 URL、长链接或 `[来源：...]`；来源按对应 `document_type` 的结构要求进入来源清单、附录或交付说明。
 - 不输出“综上所述”“总而言之”“全方位保障”“赋能千行百业”“作为AI”等套话。
 - 不默认生成实施计划、项目组织、预算框架、运维方案；用户明确要求深化时才启用。
 
@@ -271,4 +241,4 @@ python scripts/generate_docx.py --json /tmp/proposal_data.json --output ~/output
 4. 成功案例库；
 5. 标准模板。
 
-知识库不可用时，必须在附录B或交付说明中说明“未命中/未接入知识库”，并加强人工审核提示。
+知识库不可用时，必须在对应结构允许的附录、来源清单或交付说明中说明“未命中/未接入知识库”，并加强人工审核提示。
