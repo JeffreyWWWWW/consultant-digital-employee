@@ -142,7 +142,7 @@ description: |-
 - `sections.source_note`
 
 内容 sections 字段按本次 `document_type` 对应的 structure 和生成器要求组织，不在 `SKILL.md` 固定完整清单。产品或能力映射必须来自产品库、历史材料或用户材料；无法确认时写 `待确认`。
-模型根据材料推断、补写或无法从来源直接证明的正文片段，必须写入 `sections.review_highlights`，并在 `sections.review_notes` 中说明审核原因。
+模型根据材料推断、补写或无法从来源直接证明的正文片段，必须写入 `sections.review_highlights`，并在 `sections.review_notes` 中说明审核原因。`sections.review_notes` 优先使用对象格式：`{"content": "需人工审核项", "target": "正文对应片段"}`，确保 Word 批注挂到正文对应段落，而不是只写在附录B。
 
 ### 7. 质检与修正
 
@@ -178,6 +178,7 @@ python scripts/generate_docx.py --json /tmp/proposal_data.json --output output.d
 - 不得输出英文内部流程句，例如 `Now let me search...`、`Now let me read...`、`Now I have all the inputs...`。
 - 不得把读取 reference、搜索政策、生成 JSON、调用脚本等内部执行过程写入最终交付说明。
 - 如需说明进度，只用简短中文，例如“正在检索政策来源”“正在生成 Word 文档”；最终回复只保留交付结果和必要审核提示。
+- 交付前必须确认脚本返回的 `.docx` 文件真实存在；最终回复必须给出文件名或可访问路径，不得只说“已生成”。
 
 基础格式：
 

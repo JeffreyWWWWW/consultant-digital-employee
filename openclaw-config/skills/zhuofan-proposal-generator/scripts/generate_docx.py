@@ -45,8 +45,13 @@ SCHEMA = """
         "source_urls": ["兼容 policy-web-search.md 的原文链接数组"]
       }
     ],
-    "review_notes": ["需人工审核项"],
-    "review_highlights": ["正文中需要标黄并人工核对的具体文字片段"],
+    "review_notes": [
+      {
+        "content": "需人工审核项",
+        "target": "正文中对应的具体片段，用于把批注挂到正文"
+      }
+    ],
+    "review_highlights": ["正文中需要添加批注并人工核对的具体文字片段"],
     "source_note": "来源说明"
   }
 }

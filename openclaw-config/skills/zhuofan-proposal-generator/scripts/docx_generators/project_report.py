@@ -1,10 +1,12 @@
 import os
 import re
+import tempfile
+import zipfile
+import xml.etree.ElementTree as ET
 from datetime import date
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK, WD_LINE_SPACING
-from docx.enum.text import WD_COLOR_INDEX
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt
@@ -13,6 +15,8 @@ from docx.shared import Cm, Pt
 FONT_FANGSONG = "仿宋_GB2312"
 FONT_HEITI = "黑体"
 FONT_XIAOBIAOSONG = "方正小标宋_GBK"
+BODY_FONT_SIZE_PT = 16
+FIRST_LINE_INDENT_CHARS = 2
 REVIEW_MARKERS = (
     "待核验",
     "待确认",
@@ -26,8 +30,14 @@ REVIEW_MARKERS = (
     "模型生成",
     "模型建议",
 )
-REVIEW_HIGHLIGHT_NOTE = "文中黄色标注内容为需人工核对事项，请结合原始材料、政策原文和客户确认结果复核。"
+REVIEW_COMMENT_NOTE = "文中批注内容为需人工核对事项，请结合原始材料、政策原文和客户确认结果复核。"
 CN_NUMERALS = ("一", "二", "三", "四", "五", "六", "七", "八", "九", "十")
+COMMENTS_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments"
+COMMENTS_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"
+NS_W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+NS_REL = "http://schemas.openxmlformats.org/package/2006/relationships"
+NS_CT = "http://schemas.openxmlformats.org/package/2006/content-types"
+INLINE_SOURCE_RE = re.compile(r"[（(\[]\s*来源\s*[:：]\s*([^）)\]]+?)\s*[）)\]]")
 
 
 def _set_run_font(run, font_name: str, size_pt: int, bold: bool = False):
@@ -43,7 +53,7 @@ def _set_paragraph_format(p, first_line_indent: bool = True, space_before: int =
     fmt.space_before = Pt(space_before)
     fmt.space_after = Pt(space_after)
     if first_line_indent:
-        fmt.first_line_indent = Cm(0.74)
+        fmt.first_line_indent = Pt(BODY_FONT_SIZE_PT * FIRST_LINE_INDENT_CHARS)
 
 
 def _setup_page(doc):
@@ -54,7 +64,7 @@ def _setup_page(doc):
     section.right_margin = Cm(2.6)
 
 
-def _add_run(p, text: str, font: str = FONT_FANGSONG, size: int = 16, bold: bool = False):
+def _add_run(p, text: str, font: str = FONT_FANGSONG, size: int = BODY_FONT_SIZE_PT, bold: bool = False):
     run = p.add_run(text or "")
     _set_run_font(run, font, size, bold)
     return run
@@ -87,9 +97,9 @@ def _heading(doc, text: str, level: int):
     p = doc.add_paragraph()
     _set_paragraph_format(p, first_line_indent=False, space_before=8, space_after=4)
     if level == 1:
-        _add_run(p, text, FONT_HEITI, 16, True)
+        _add_run(p, text, FONT_HEITI, BODY_FONT_SIZE_PT, True)
     else:
-        _add_run(p, text, FONT_FANGSONG, 16, True)
+        _add_run(p, text, FONT_FANGSONG, BODY_FONT_SIZE_PT, True)
     return p
 
 
@@ -117,34 +127,63 @@ def _page_break(doc):
     p.add_run().add_break(WD_BREAK.PAGE)
 
 
-def _needs_review_highlight(text: str) -> bool:
+def _needs_review_comment(text: str) -> bool:
     return any(marker in (text or "") for marker in REVIEW_MARKERS)
 
 
-def _add_text_run(p, text: str, highlight_review: bool = True):
-    if not highlight_review or not _needs_review_highlight(text):
-        return _add_run(p, text)
-
-    pattern = "(" + "|".join(re.escape(marker) for marker in REVIEW_MARKERS) + ")"
-    last = 0
-    highlighted_run = None
-    for match in re.finditer(pattern, text):
-        if match.start() > last:
-            _add_run(p, text[last:match.start()])
-        highlighted_run = _add_run(p, match.group(0))
-        highlighted_run.font.highlight_color = WD_COLOR_INDEX.YELLOW
-        last = match.end()
-    if last < len(text):
-        _add_run(p, text[last:])
-    return highlighted_run
+def _comment_store(paragraph):
+    part = paragraph.part
+    if not hasattr(part, "_zhuofan_comments"):
+        part._zhuofan_comments = []
+    return part._zhuofan_comments
 
 
-def _add_paragraphs(doc, text, highlight_review: bool = True):
+def _add_comment_to_paragraph(paragraph, comment_text: str):
+    comment_text = str(comment_text or "").strip()
+    if not comment_text:
+        return
+    if not paragraph.runs:
+        _add_run(paragraph, "")
+    comments = _comment_store(paragraph)
+    comment_id = len(comments)
+    comments.append({"id": comment_id, "text": comment_text})
+
+    start = OxmlElement("w:commentRangeStart")
+    start.set(qn("w:id"), str(comment_id))
+    end = OxmlElement("w:commentRangeEnd")
+    end.set(qn("w:id"), str(comment_id))
+    ref_run = OxmlElement("w:r")
+    ref = OxmlElement("w:commentReference")
+    ref.set(qn("w:id"), str(comment_id))
+    ref_run.append(ref)
+
+    p = paragraph._p
+    insert_at = 1 if p.pPr is not None else 0
+    p.insert(insert_at, start)
+    p.append(end)
+    p.append(ref_run)
+
+
+def _review_comment_text(text: str) -> str:
+    markers = [marker for marker in REVIEW_MARKERS if marker in (text or "")]
+    if markers:
+        return "需人工核对：文本包含审核标记（" + "、".join(markers) + "）。"
+    return "需人工核对：该内容需结合原始材料和来源依据复核。"
+
+
+def _add_text_run(p, text: str, review_comment: bool = True):
+    run = _add_run(p, text)
+    if review_comment and _needs_review_comment(text):
+        _add_comment_to_paragraph(p, _review_comment_text(text))
+    return run
+
+
+def _add_paragraphs(doc, text, review_comment: bool = True):
     if not text:
         return
     if isinstance(text, list):
         for item in text:
-            _add_paragraphs(doc, item, highlight_review=highlight_review)
+            _add_paragraphs(doc, item, review_comment=review_comment)
         return
     for para in str(text).split("\n"):
         para = para.strip()
@@ -152,10 +191,10 @@ def _add_paragraphs(doc, text, highlight_review: bool = True):
             continue
         p = doc.add_paragraph()
         _set_paragraph_format(p)
-        _add_text_run(p, para, highlight_review=highlight_review)
+        _add_text_run(p, para, review_comment=review_comment)
 
 
-def _highlight_terms_in_document(doc, terms):
+def _comment_terms_in_document(doc, terms):
     terms = [str(term).strip() for term in (terms or []) if str(term).strip()]
     if not terms:
         return
@@ -163,25 +202,25 @@ def _highlight_terms_in_document(doc, terms):
         full_text = "".join(run.text for run in paragraph.runs)
         if not full_text or not any(term in full_text for term in terms):
             continue
-        original_runs = paragraph.runs
-        if not original_runs:
-            continue
-        base_font = original_runs[0].font.name or FONT_FANGSONG
-        base_size = int(original_runs[0].font.size.pt) if original_runs[0].font.size else 16
-        base_bold = bool(original_runs[0].font.bold)
-        for run in list(original_runs):
-            run._element.getparent().remove(run._element)
+        matched_terms = [term for term in terms if term in full_text]
+        _add_comment_to_paragraph(paragraph, "需人工核对：" + "；".join(matched_terms))
 
-        pattern = "(" + "|".join(re.escape(term) for term in sorted(terms, key=len, reverse=True)) + ")"
-        last = 0
-        for match in re.finditer(pattern, full_text):
-            if match.start() > last:
-                _add_run(paragraph, full_text[last:match.start()], base_font, base_size, base_bold)
-            highlighted_run = _add_run(paragraph, match.group(0), base_font, base_size, base_bold)
-            highlighted_run.font.highlight_color = WD_COLOR_INDEX.YELLOW
-            last = match.end()
-        if last < len(full_text):
-            _add_run(paragraph, full_text[last:], base_font, base_size, base_bold)
+
+def _paragraph_text(paragraph) -> str:
+    return "".join(run.text for run in paragraph.runs)
+
+
+def _replace_paragraph_text(paragraph, text: str):
+    p = paragraph._p
+    for child in list(p):
+        if child.tag != qn("w:pPr"):
+            p.remove(child)
+    _add_run(paragraph, text)
+
+
+def _host_from_url(url: str) -> str:
+    match = re.search(r"https?://([^/\s]+)", url or "")
+    return match.group(1).lower() if match else ""
 
 
 def _clean_title(project_name: str) -> str:
@@ -256,6 +295,25 @@ def _format_source_item(item) -> str:
     return "".join(parts)
 
 
+def _source_comment_text(item) -> str:
+    if not isinstance(item, dict):
+        return str(item)
+    name = item.get("name") or item.get("title") or item.get("source_name") or item.get("policy_name") or "未命名来源"
+    agency = item.get("agency") or item.get("publisher") or item.get("source") or item.get("source_org")
+    doc_no = item.get("doc_no") or item.get("document_no")
+    date_text = item.get("date") or item.get("publish_date") or item.get("published_at")
+    url = item.get("url") or item.get("link") or item.get("source_url")
+    used_for = item.get("used_for") or item.get("support") or item.get("purpose")
+    meta = "，".join(str(value) for value in (agency, doc_no, date_text) if value)
+    title = f"{name}（{meta}）" if meta else str(name)
+    parts = [title]
+    if url:
+        parts.append(str(url))
+    if used_for:
+        parts.append(f"支撑内容：{used_for}")
+    return "；".join(parts)
+
+
 def _source_fields(item):
     if not isinstance(item, dict):
         return {"text": str(item), "url": ""}
@@ -291,6 +349,14 @@ def _source_fields(item):
     return {"prefix": prefix, "url": url or "", "suffix": suffix}
 
 
+def _source_items(items):
+    if not items:
+        return []
+    if isinstance(items, str):
+        return [line.strip() for line in items.split("\n") if line.strip()]
+    return list(items)
+
+
 def _add_bullets(doc, items):
     if not items:
         return
@@ -304,24 +370,127 @@ def _add_bullets(doc, items):
         _add_run(p, f"- {text}")
 
 
+def _add_numbered_review_items(doc, items):
+    if not items:
+        return
+    if isinstance(items, str):
+        items = [item.strip() for item in items.split("\n") if item.strip()]
+    for idx, item in enumerate(items, start=1):
+        text = _review_note_text(item)
+        p = doc.add_paragraph()
+        _set_paragraph_format(p)
+        _add_text_run(p, f"{idx}. {text}", review_comment=False)
+
+
 def _add_source_bullets(doc, items):
     if not items:
         return
     if isinstance(items, str):
         _add_paragraphs(doc, items)
         return
-    for item in items:
+    for idx, item in enumerate(items, start=1):
         fields = _source_fields(item)
-        p = doc.add_paragraph()
-        _set_paragraph_format(p)
         if "text" in fields:
+            p = doc.add_paragraph()
+            _set_paragraph_format(p)
             _add_run(p, fields["text"])
             continue
-        _add_run(p, fields["prefix"])
+        title = re.sub(r"^\s*-\s*", "", fields["prefix"])
+        p = doc.add_paragraph()
+        _set_paragraph_format(p)
+        _add_run(p, f"{idx}. {title}")
+
+        p = doc.add_paragraph()
+        _set_paragraph_format(p)
+        _add_run(p, "原文链接：")
         if fields["url"]:
-            _add_run(p, "：")
             _add_hyperlink(p, fields["url"], fields["url"])
-        _add_run(p, fields["suffix"])
+            _add_run(p, "；")
+        else:
+            status = fields["suffix"].lstrip("：").split("；", 1)[0] or "待核验原文"
+            _add_run(p, f"{status}；")
+
+        support = fields["suffix"].split("支撑内容：", 1)[1] if "支撑内容：" in fields["suffix"] else ""
+        if support:
+            p = doc.add_paragraph()
+            _set_paragraph_format(p)
+            _add_run(p, f"支撑内容：{support}")
+
+
+def _comment_inline_sources_in_body(doc, sources):
+    source_items = [item for item in _source_items(sources) if isinstance(item, dict)]
+    for paragraph in doc.paragraphs:
+        text = _paragraph_text(paragraph)
+        matches = INLINE_SOURCE_RE.findall(text)
+        if not matches:
+            continue
+        comments = []
+        for label in matches:
+            label = label.strip()
+            matched_source = None
+            for item in source_items:
+                url = item.get("url") or item.get("link") or item.get("source_url") or ""
+                name = item.get("name") or item.get("title") or item.get("source_name") or item.get("policy_name") or ""
+                host = _host_from_url(url)
+                if label.lower() in (url or "").lower() or label.lower() in host or label in str(name):
+                    matched_source = item
+                    break
+            comments.append(_source_comment_text(matched_source) if matched_source else f"来源待核验：{label}")
+        clean_text = INLINE_SOURCE_RE.sub("", text)
+        clean_text = re.sub(r"\s+([，。；：])", r"\1", clean_text).strip()
+        _replace_paragraph_text(paragraph, clean_text)
+        _add_comment_to_paragraph(paragraph, "资料来源：" + "；".join(comments))
+
+
+def _review_note_text(item) -> str:
+    if isinstance(item, dict):
+        text = item.get("content") or item.get("text") or item.get("note") or item.get("issue") or _format_source_item(item)
+    else:
+        text = str(item)
+    text = re.sub(r"^\s*[-•]\s*", "", text)
+    text = re.sub(r"^\s*\d+[\.、]\s*", "", text)
+    return text.strip()
+
+
+def _review_note_targets(item):
+    if isinstance(item, dict):
+        raw_targets = item.get("target") or item.get("targets") or item.get("match_text") or item.get("body_text")
+        if isinstance(raw_targets, str):
+            return [raw_targets.strip()] if raw_targets.strip() else []
+        if isinstance(raw_targets, list):
+            return [str(target).strip() for target in raw_targets if str(target).strip()]
+
+    text = _review_note_text(item)
+    targets = []
+    targets.extend(re.findall(r"[《“\"]([^》”\"]{2,60})[》”\"]", text))
+    targets.extend(re.findall(r"[A-Za-z0-9一-龥]+(?:\d+%|％)", text))
+    prefix = re.split(r"(?:需|待|建议|为|涉及|由|，|。)", text, maxsplit=1)[0].strip()
+    if 2 <= len(prefix) <= 40:
+        targets.append(prefix)
+    for token in re.findall(r"[A-Za-z0-9\u4e00-\u9fff]{2,30}", text):
+        if len(token) >= 4 and token not in ("人工审核事项", "原文链接", "会议纪要", "进一步确认"):
+            targets.append(token)
+    deduped = []
+    for target in targets:
+        target = str(target).strip(" ：:，。；;")
+        if target and target not in deduped:
+            deduped.append(target)
+    return deduped
+
+
+def _comment_review_notes_in_body(doc, review_notes):
+    for item in _source_items(review_notes):
+        note = _review_note_text(item)
+        if not note:
+            continue
+        targets = _review_note_targets(item)
+        for paragraph in doc.paragraphs:
+            text = _paragraph_text(paragraph)
+            if not text:
+                continue
+            if any(target and target in text for target in targets):
+                _add_comment_to_paragraph(paragraph, f"需人工核对：{note}")
+                break
 
 
 def _append_review_appendix(doc, sections: dict):
@@ -342,11 +511,86 @@ def _append_review_appendix(doc, sections: dict):
 
     _page_break(doc)
     _heading(doc, "附录B：需人工审核事项", 1)
-    _add_paragraphs(doc, REVIEW_HIGHLIGHT_NOTE, highlight_review=False)
+    _add_paragraphs(doc, REVIEW_COMMENT_NOTE, review_comment=False)
     if review_notes:
-        _add_bullets(doc, review_notes)
+        _add_numbered_review_items(doc, review_notes)
     else:
         _add_paragraphs(doc, "【待补充需人工审核事项】")
+
+
+def _comments_xml(comments):
+    ET.register_namespace("w", NS_W)
+    root = ET.Element(f"{{{NS_W}}}comments")
+    for item in comments:
+        comment = ET.SubElement(
+            root,
+            f"{{{NS_W}}}comment",
+            {
+                f"{{{NS_W}}}id": str(item["id"]),
+                f"{{{NS_W}}}author": "卓智",
+                f"{{{NS_W}}}initials": "ZZ",
+            },
+        )
+        p = ET.SubElement(comment, f"{{{NS_W}}}p")
+        r = ET.SubElement(p, f"{{{NS_W}}}r")
+        t = ET.SubElement(r, f"{{{NS_W}}}t")
+        t.text = item["text"]
+    return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+
+
+def _ensure_comments_relationship(xml_bytes):
+    ET.register_namespace("", NS_REL)
+    root = ET.fromstring(xml_bytes)
+    for rel in root.findall(f"{{{NS_REL}}}Relationship"):
+        if rel.get("Type") == COMMENTS_REL_TYPE:
+            return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+    existing_ids = {rel.get("Id") for rel in root.findall(f"{{{NS_REL}}}Relationship")}
+    idx = 1
+    while f"rId{idx}" in existing_ids:
+        idx += 1
+    ET.SubElement(
+        root,
+        f"{{{NS_REL}}}Relationship",
+        {"Id": f"rId{idx}", "Type": COMMENTS_REL_TYPE, "Target": "comments.xml"},
+    )
+    return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+
+
+def _ensure_comments_content_type(xml_bytes):
+    ET.register_namespace("", NS_CT)
+    root = ET.fromstring(xml_bytes)
+    for override in root.findall(f"{{{NS_CT}}}Override"):
+        if override.get("PartName") == "/word/comments.xml":
+            return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+    ET.SubElement(
+        root,
+        f"{{{NS_CT}}}Override",
+        {"PartName": "/word/comments.xml", "ContentType": COMMENTS_CONTENT_TYPE},
+    )
+    return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+
+
+def _write_comments_part(docx_path: str, comments):
+    if not comments:
+        return
+    with zipfile.ZipFile(docx_path, "r") as src:
+        entries = {name: src.read(name) for name in src.namelist()}
+
+    entries["word/comments.xml"] = _comments_xml(comments)
+    entries["word/_rels/document.xml.rels"] = _ensure_comments_relationship(entries["word/_rels/document.xml.rels"])
+    entries["[Content_Types].xml"] = _ensure_comments_content_type(entries["[Content_Types].xml"])
+
+    output_dir = os.path.dirname(os.path.abspath(docx_path)) or "."
+    fd, tmp_path = tempfile.mkstemp(suffix=".docx", dir=output_dir)
+    os.close(fd)
+    try:
+        with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as dst:
+            for name, content in entries.items():
+                dst.writestr(name, content)
+        os.replace(tmp_path, docx_path)
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 
 def build_docx(data: dict, output_path: str = None) -> str:
@@ -354,13 +598,20 @@ def build_docx(data: dict, output_path: str = None) -> str:
     customer_name = data.get("customer_name", "")
     region = data.get("region", "")
     sections = data.get("sections", {})
+    sources = (
+        sections.get("policy_sources")
+        or sections.get("source_links")
+        or sections.get("sources")
+        or sections.get("source_note")
+    )
+    review_notes = sections.get("review_notes") or []
 
     doc = Document()
     _setup_page(doc)
 
     style = doc.styles["Normal"]
     style.font.name = FONT_FANGSONG
-    style.font.size = Pt(16)
+    style.font.size = Pt(BODY_FONT_SIZE_PT)
     style.element.rPr.rFonts.set(qn("w:eastAsia"), FONT_FANGSONG)
     style.paragraph_format.line_spacing_rule = WD_LINE_SPACING.ONE_POINT_FIVE
 
@@ -390,7 +641,9 @@ def build_docx(data: dict, output_path: str = None) -> str:
     else:
         _add_paragraphs(doc, contents or "【待补充建设内容】")
 
-    _highlight_terms_in_document(doc, sections.get("review_highlights") or sections.get("manual_review_terms"))
+    _comment_inline_sources_in_body(doc, sources)
+    _comment_terms_in_document(doc, sections.get("review_highlights") or sections.get("manual_review_terms"))
+    _comment_review_notes_in_body(doc, review_notes)
 
     _append_review_appendix(doc, sections)
 
@@ -398,4 +651,5 @@ def build_docx(data: dict, output_path: str = None) -> str:
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     doc.save(output_path)
+    _write_comments_part(output_path, getattr(doc.part, "_zhuofan_comments", []))
     return os.path.abspath(output_path)
