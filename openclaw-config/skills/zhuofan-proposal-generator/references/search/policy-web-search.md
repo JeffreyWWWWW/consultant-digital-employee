@@ -37,9 +37,11 @@ site:gov.cn {核心需求} 政策
 {区域或同类城市} {项目主题} 案例
 ```
 
-## search_log 记录
+## 核验记录
 
-所有检索或核验过程写入 `sections.search_log`：
+检索或核验结果写入当前 `document_type` 对应结构要求的来源字段、审核提示或交付说明。没有固定字段要求时，至少记录到 `sections.source_note` 或 `sections.review_notes`。
+
+建议记录以下信息：
 
 ```json
 [

@@ -4,7 +4,7 @@
 
 ## 文件职责
 
-- `generate_docx.py`：Word 输出入口。负责读取 JSON、校验 `document_type`、分发到对应生成器，并输出生成耗时。
+- `generate_docx.py`：Word 输出入口。负责读取 JSON、校验 `document_type`，并分发到对应生成器。
 - `docx_generators/project_report.py`：项目汇报 Word 生成器。负责标题、章节、版式和文件名规则。
 
 ## 设计说明

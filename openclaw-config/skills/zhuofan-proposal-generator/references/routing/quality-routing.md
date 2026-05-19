@@ -2,17 +2,10 @@
 
 本文件只负责根据 `document_type` 选择质量检查清单。判断完成后，只读取对应 checklist。
 
-当前阶段已实现：
+当前可用清单：
 
 - `project_report`：读取 `../quality/project-report-checklist.md`
 
-暂未实现：
+如果没有对应的质量检查清单，停止当前输出流程，先追问或说明当前交付物暂不支持。
 
-- `solution`
-- `bid_support`
-- `achievement_report`
-- `other_material`
-
-如果 `document_type` 不是 `project_report`，当前阶段不生成 Word，先追问或说明暂不展开该交付物。
-
-输出前必须形成 `sections.review_notes`，并根据检查结果修正 JSON 后再生成 Word。
+质量检查结果必须写入 `sections.review_notes`，并根据检查结果修正 JSON。

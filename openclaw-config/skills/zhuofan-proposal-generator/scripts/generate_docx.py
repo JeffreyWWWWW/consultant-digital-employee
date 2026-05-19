@@ -32,8 +32,6 @@ SCHEMA = """
       }
     ],
     "review_notes": ["需人工审核项"],
-    "search_log": [],
-    "stage_timings": [],
     "source_note": "来源说明"
   }
 }
@@ -45,7 +43,7 @@ SCHEMA = """
 """
 
 
-SUPPORTED_TYPES = {"project_report", "project_brief", "project_material", "项目汇报", "项目建议支撑材料", "立项依据材料"}
+SUPPORTED_TYPES = {"project_report"}
 
 
 def _load_json(path: str) -> dict:

@@ -21,7 +21,7 @@ Use runtime-provided startup context first.
 - 总作业规程：按 `references/workflow/proposal-generation-playbook.md` 串联需求、历史方案、检索、映射、质检、输出
 - 文档结构：当前项目汇报阶段按 `references/structures/project-report.md`
 - 质量检查：按 `references/routing/quality-routing.md` 定位对应质检清单
-- Word 输出：按 `scripts/generate_docx.py` 路由到对应生成器
+- 输出方式：按 skill 当前说明和对应脚本执行
 
 AGENTS.md 不得覆盖、复制或简化 skill/reference 中的具体规则。发现冲突时，以
 `skills/zhuofan-proposal-generator/SKILL.md` 及其 references 为准，并清理本文件中的重复规则。

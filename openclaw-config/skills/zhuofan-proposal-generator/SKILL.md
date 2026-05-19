@@ -2,7 +2,7 @@
 name: zhuofan-proposal-generator
 description: |-
   智能方案初稿生成（ZX-01）。当前阶段聚焦项目需求阶段的项目汇报/项目建议支撑材料。当用户提供项目需求、会议纪要、沟通材料、历史方案参考等，并要求生成项目汇报或需求阶段材料时激活。
-  按“用户需求解析 -> 历史资产复用 -> 必要资料检索 -> 内容映射 -> 专家化写作 -> 质检修正 -> Word 输出”的流程，生成可人工复核的项目汇报稿。
+  按“用户需求解析 -> 历史资产复用 -> 必要资料检索 -> 内容映射 -> 专家化写作 -> 质检修正 -> 输出交付”的流程，生成可人工复核的项目汇报稿。
 ---
 
 # 智能方案初稿生成（ZX-01）
@@ -104,7 +104,7 @@ description: |-
 - 需要写入案例时，检索或查案例库并记录核验状态；
 - 不需要引用的内容，不为了满足流程强行检索。
 
-所有检索或核验过程必须写入 `search_log`。没有成功检索或没有来源链接时，不得写成“已依据”或“已核验”。
+检索或核验结果应写入对应结构要求的来源说明、审核提示或交付说明。没有成功检索或没有来源链接时，不得写成“已依据”或“已核验”。
 
 ### 4. 产品、能力或案例匹配
 
@@ -130,7 +130,7 @@ description: |-
 
 ### 6. JSON 初稿
 
-先生成结构化 JSON，再生成 Word。
+先生成结构化 JSON，再进入输出环节。
 
 公共字段至少包含：
 
@@ -138,15 +138,13 @@ description: |-
 - `historical_asset_review`
 - `content_mapping`
 - `sections.review_notes`
-- `sections.search_log`
-- `sections.stage_timings`
 - `sections.source_note`
 
 内容 sections 字段按本次 `document_type` 对应的 structure 和生成器要求组织，不在 `SKILL.md` 固定完整清单。产品或能力映射必须来自产品库、历史材料或用户材料；无法确认时写 `待确认`。
 
 ### 7. 质检与修正
 
-生成 Word 前必须先按 `routing/quality-routing.md` 选择 checklist，并根据结果修正 JSON。
+输出前必须先按 `routing/quality-routing.md` 选择 checklist，并根据结果修正 JSON。
 
 重点检查：
 
