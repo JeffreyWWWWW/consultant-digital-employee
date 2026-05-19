@@ -75,11 +75,20 @@ def _clean_title(project_name: str) -> str:
     return name
 
 
-def _project_report_title(project_name: str) -> str:
+def _project_report_title(project_name: str, customer_name: str = "") -> str:
     name = _clean_title(project_name)
+    customer = (customer_name or "").strip(" 　《》")
     if "汇报" in name:
+        if customer and customer not in name:
+            return f"{customer}{name}"
         return name
-    return f"{name}汇报"
+    if name.endswith("建设项目"):
+        report_name = f"{name}汇报"
+    else:
+        report_name = f"{name}建设项目汇报"
+    if customer and customer not in report_name:
+        return f"{customer}{report_name}"
+    return report_name
 
 
 def _safe_filename(text: str) -> str:
@@ -87,30 +96,87 @@ def _safe_filename(text: str) -> str:
     return re.sub(r'[<>:"|?*]', "_", text)
 
 
-def _default_output_path(region: str, project_name: str) -> str:
+def _default_output_path(region: str, project_name: str, customer_name: str = "") -> str:
     today = date.today().strftime("%Y%m%d")
-    project_short = _safe_filename(_clean_title(project_name)[:14])
-    return f"ZX01_{_safe_filename(region)}_{project_short}_汇报稿_{today}.docx"
+    report_name = _safe_filename(_project_report_title(project_name, customer_name))
+    return f"{report_name}_{today}.docx"
 
 
-def _normalize_output_path(output_path: str, region: str, project_name: str) -> str:
+def _normalize_output_path(output_path: str, region: str, project_name: str, customer_name: str = "") -> str:
+    filename = _default_output_path(region, project_name, customer_name)
     if not output_path:
-        return _default_output_path(region, project_name)
-
-    filename = os.path.basename(output_path)
-    legacy_solution_markers = ["解决方案", "方案初稿", "初稿"]
-    if any(marker in filename for marker in legacy_solution_markers):
-        output_dir = os.path.dirname(output_path) or "."
-        return os.path.join(output_dir, _default_output_path(region, project_name))
-    return output_path
+        return filename
+    output_dir = os.path.dirname(output_path) or "."
+    return os.path.join(output_dir, filename)
 
 
 def _project_contents(sections: dict):
     return sections.get("project_contents") or sections.get("modules") or []
 
 
+def _format_source_item(item) -> str:
+    if not isinstance(item, dict):
+        return str(item)
+    name = item.get("name") or item.get("title") or item.get("source_name") or item.get("policy_name") or "未命名来源"
+    agency = item.get("agency") or item.get("publisher") or item.get("source") or item.get("source_org")
+    doc_no = item.get("doc_no") or item.get("document_no")
+    date_text = item.get("date") or item.get("publish_date") or item.get("published_at")
+    url = item.get("url") or item.get("link") or item.get("source_url")
+    status = item.get("status") or item.get("verification_status") or item.get("核验状态")
+    used_for = item.get("used_for") or item.get("support") or item.get("purpose")
+    parts = [str(name)]
+    meta = [value for value in (agency, doc_no, date_text) if value]
+    if meta:
+        parts.append("（" + "，".join(map(str, meta)) + "）")
+    if url:
+        parts.append(f"：{url}")
+    elif status:
+        parts.append(f"：{status}")
+    else:
+        parts.append("：待核验原文")
+    if used_for:
+        parts.append(f"；支撑内容：{used_for}")
+    return "".join(parts)
+
+
+def _add_bullets(doc, items):
+    if not items:
+        return
+    if isinstance(items, str):
+        _add_paragraphs(doc, items)
+        return
+    for item in items:
+        text = _format_source_item(item)
+        p = doc.add_paragraph()
+        _set_paragraph_format(p)
+        _add_run(p, f"- {text}")
+
+
+def _append_review_appendix(doc, sections: dict):
+    sources = (
+        sections.get("policy_sources")
+        or sections.get("source_links")
+        or sections.get("sources")
+        or sections.get("source_note")
+    )
+    review_notes = sections.get("review_notes") or []
+
+    _heading(doc, "附录A：政策与资料来源链接", 1)
+    if sources:
+        _add_bullets(doc, sources)
+    else:
+        _add_paragraphs(doc, "【待补充政策与资料来源链接】")
+
+    _heading(doc, "附录B：需人工审核事项", 1)
+    if review_notes:
+        _add_bullets(doc, review_notes)
+    else:
+        _add_paragraphs(doc, "【待补充需人工审核事项】")
+
+
 def build_docx(data: dict, output_path: str = None) -> str:
     project_name = data["project_name"]
+    customer_name = data.get("customer_name", "")
     region = data.get("region", "")
     sections = data.get("sections", {})
 
@@ -126,7 +192,7 @@ def build_docx(data: dict, output_path: str = None) -> str:
     title_p = doc.add_paragraph()
     title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     _set_paragraph_format(title_p, first_line_indent=False, space_after=18)
-    _add_run(title_p, _project_report_title(project_name), FONT_XIAOBIAOSONG, 22, True)
+    _add_run(title_p, _project_report_title(project_name, customer_name), FONT_XIAOBIAOSONG, 22, True)
 
     _heading(doc, "项目建设的依据", 1)
     _add_paragraphs(doc, sections.get("project_basis") or sections.get("policy_background") or "【待补充项目建设依据】")
@@ -149,7 +215,9 @@ def build_docx(data: dict, output_path: str = None) -> str:
     else:
         _add_paragraphs(doc, contents or "【待补充建设内容】")
 
-    output_path = _normalize_output_path(output_path, region, project_name)
+    _append_review_appendix(doc, sections)
+
+    output_path = _normalize_output_path(output_path, region, project_name, customer_name)
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     doc.save(output_path)

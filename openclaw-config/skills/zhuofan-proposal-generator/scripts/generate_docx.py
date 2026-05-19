@@ -31,6 +31,17 @@ SCHEMA = """
         "content": "建设动作、服务对象、业务价值"
       }
     ],
+    "policy_sources": [
+      {
+        "name": "政策或资料名称",
+        "agency": "发文单位或来源机构",
+        "doc_no": "文号（如有）",
+        "date": "发布时间（如有）",
+        "url": "原文链接；无法核验时留空并填写 status",
+        "status": "success/partial/待核验原文/待联网核验",
+        "used_for": "支撑的正文内容"
+      }
+    ],
     "review_notes": ["需人工审核项"],
     "source_note": "来源说明"
   }
@@ -60,7 +71,7 @@ def _validate_project_report(data: dict) -> None:
             f"当前阶段只支持 document_type=project_report，不支持 {doc_type!r}。"
         )
 
-    missing = [key for key in ("project_name", "region") if not data.get(key)]
+    missing = [key for key in ("project_name", "customer_name", "region") if not data.get(key)]
     if missing:
         raise ValueError("缺少必填字段：" + ", ".join(missing))
 
