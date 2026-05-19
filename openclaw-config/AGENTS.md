@@ -17,10 +17,10 @@ Use runtime-provided startup context first.
 权威入口：
 
 - Skill 主入口：`skills/zhuofan-proposal-generator/SKILL.md`
-- 文档类型路由：先按 `references/proposal-routing.md` 判断 `document_type`
-- 总作业规程：按 `references/proposal-generation-playbook.md` 串联需求、历史方案、检索、映射、质检、输出
-- 文档结构：按 `references/proposal-structure.md` 定位对应类型结构
-- 质量检查：按 `references/quality-checklist.md` 定位对应类型清单
+- 文档类型路由：先按 `references/routing/proposal-routing.md` 判断 `document_type`
+- 总作业规程：按 `references/workflow/proposal-generation-playbook.md` 串联需求、历史方案、检索、映射、质检、输出
+- 文档结构：当前项目汇报阶段按 `references/structures/project-report.md`
+- 质量检查：按 `references/routing/quality-routing.md` 定位对应质检清单
 - Word 输出：按 `scripts/generate_docx.py` 路由到对应生成器
 
 AGENTS.md 不得覆盖、复制或简化 skill/reference 中的具体规则。发现冲突时，以

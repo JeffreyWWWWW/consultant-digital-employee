@@ -36,7 +36,7 @@ description: |-
 - 生成项目汇报稿前，必须先按 `workflow/proposal-generation-playbook.md` 完成需求解析、历史资产复用、必要检索、内容映射和交付物判断。
 - 需要引用政策、行业资料、统计数据、标准规范或成功案例时，必须遵守 `search/policy-web-search.md`。
 - 先读取 `routing/proposal-routing.md` 判断本次交付物类型；当前阶段只继续处理 `project_report`，其他类型先追问或说明暂不展开。
-- 当前阶段项目汇报结构只按 `structures/project-report.md`，Word 生成只走 `scripts/docx_generators/project_report.py`。
+- 当前阶段项目汇报结构只按 `structures/project-report.md`，Word 输出通过 `scripts/generate_docx.py` 完成。
 - 生成内容和润色时，按 `writing/consultant-writing-rules.md` 控制风格。
 - 输出前必须先读取 `routing/quality-routing.md` 选择质检清单，形成 `review_notes` 并修正 JSON。
 
@@ -78,7 +78,7 @@ description: |-
 
 ### 2. 历史资产复用
 
-读取用户提供或知识库召回的历史方案后，必须形成 `historical_asset_review`。
+读取用户提供或当前可用材料中的历史方案后，必须形成 `historical_asset_review`。
 
 只允许复用：
 
@@ -95,7 +95,7 @@ description: |-
 
 ### 3. 主动外部检索
 
-政策、行业资料、标准规范、统计数据和成功案例不是默认由用户提供。凡是要写入材料作为依据、案例或事实支撑的内容，都必须先通过知识库、联网检索或用户材料核验。
+政策、行业资料、标准规范、统计数据和成功案例不是默认由用户提供。凡是要写入材料作为依据、案例或事实支撑的内容，都必须先通过当前可用检索工具或用户材料核验。
 
 检索范围按本次 `document_type`、材料用途和内容需要确定，并遵守 `references/search/policy-web-search.md`：
 
@@ -108,7 +108,7 @@ description: |-
 
 ### 4. 产品、能力或案例匹配
 
-按本次交付物需要查产品库、能力清单和案例库。产品能力无法确认时，写能力模块并标注 `待确认`，不得虚构产品名称或能力。需要写入案例时，优先查案例库或联网检索；仍无法核验时删除案例或标注 `待联网核验`。
+按本次交付物需要，从用户材料、历史材料或当前可用资料中提取产品、能力和案例信息。产品能力无法确认时，写能力模块并标注 `待确认`，不得虚构产品名称或能力。需要写入案例时，必须先通过用户材料或当前可用检索工具核验；仍无法核验时删除案例或标注 `待联网核验`。
 
 ### 5. 内容映射
 
@@ -165,12 +165,12 @@ description: |-
 生成方式：
 
 ```bash
-python scripts/generate_docx.py --json /tmp/proposal_data.json --output {项目汇报文件名}.docx
+python scripts/generate_docx.py --json /tmp/proposal_data.json --output output.docx
 ```
 
-脚本入口：`scripts/generate_docx.py`。当前阶段只支持 `project_report`，入口脚本负责读取 JSON 和校验类型，实际 Word 生成由 `scripts/docx_generators/project_report.py` 完成。
+脚本入口：`scripts/generate_docx.py`。当前阶段只支持 `project_report`。
 
-发送文件后的最后一条对话消息必须包含交付说明。不得省略“总用时”和“阶段用时”；无法精确记录时写“未记录”，不能整段不写。
+发送文件后的最后一条对话消息只做简短交付说明，不在对话中展开正文或完整检查清单。具体审核提示、来源说明和待确认事项应写入输出的 Word 文档。
 
 基础格式：
 
@@ -178,47 +178,9 @@ python scripts/generate_docx.py --json /tmp/proposal_data.json --output {项目�
 {交付物名称}已生成，请查收文件。
 
 文件：{文件名}.docx
-总用时：{X分Y秒 / Y秒 / 未记录}
 
-阶段用时：
-- 需求解析：{X秒 / 未记录}
-- 历史资产复用：{X秒 / 未记录}
-- 联网检索：{X秒 / 未记录}
-- 产品/能力/案例匹配：{X秒 / 未记录}
-- 内容映射：{X秒 / 未记录}
-- JSON 初稿：{X秒 / 未记录}
-- 质检审稿：{X秒 / 未记录}
-- 修正 JSON：{X秒 / 未记录}
-- Word 输出：{X秒 / 未记录}
-- 文件发送：{X秒 / 未记录}
-
-参考来源：
-- 历史方案：{方案名称 / 未命中 / 未提供}
-- 匹配产品或能力：{产品或能力列表 / 待确认 / 不适用}
-- 引用政策或资料：{N}条（无则写未引用；未核验则写待核验）
-- 参考案例：{N}个（无则写未引用；未核验则写待核验）
-
-需要人工重点审核：
-- {待确认事项1}
-- {待确认事项2}
+说明：来源、待核验内容和人工审核提示已写入文档。
 ```
-
-阶段用时至少包含：
-
-- 需求解析；
-- 历史资产复用；
-- 联网检索；
-- 产品/能力/案例匹配；
-- 内容映射；
-- JSON 初稿；
-- 质检审稿；
-- 修正 JSON；
-- Word 输出；
-- 文件发送。
-
-如果运行环境无法可靠获取某阶段耗时，该阶段写“未记录”。Word 输出阶段优先采用脚本输出的 `word_output_seconds`，兼容读取 `generated_in_seconds`。
-
-交付闸门：如果最后一条对话消息缺少“阶段用时：”小节，视为未完成交付，必须补发一条包含完整阶段用时的交付说明。
 
 ## 约束与红线
 
@@ -229,16 +191,3 @@ python scripts/generate_docx.py --json /tmp/proposal_data.json --output {项目�
 - 不替代顾问做报价、承诺性指标、商务策略和最终方案决策。
 - 不在材料内容中内嵌 URL、长链接或 `[来源：...]`；来源按对应 `document_type` 的结构要求进入来源清单、附录或交付说明。
 - 不输出“综上所述”“总而言之”“全方位保障”“赋能千行百业”“作为AI”等套话。
-- 不默认生成实施计划、项目组织、预算框架、运维方案；用户明确要求深化时才启用。
-
-## 知识库使用
-
-知识库可用时，按以下优先级检索：
-
-1. 历史方案库；
-2. 产品能力清单；
-3. 政策法规库；
-4. 成功案例库；
-5. 标准模板。
-
-知识库不可用时，必须在对应结构允许的附录、来源清单或交付说明中说明“未命中/未接入知识库”，并加强人工审核提示。

@@ -102,8 +102,6 @@ def main() -> None:
 
     elapsed = time.perf_counter() - start_time
     print(path)
-    print(f"word_output_seconds={elapsed:.2f}")
-    print(f"generated_in_seconds={elapsed:.2f}")
 
 
 if __name__ == "__main__":
