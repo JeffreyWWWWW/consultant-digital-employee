@@ -31,6 +31,11 @@ REVIEW_MARKERS = (
     "模型建议",
 )
 REVIEW_COMMENT_NOTE = "文中批注内容为需人工核对事项，请结合原始材料、政策原文和客户确认结果复核。"
+SOURCE_STATUS_NOTE = (
+    "来源核验状态说明：已核验原文表示模型已打开并确认原文页面且要素匹配，可作为已核验依据；"
+    "待核验原文、待联网核验、未找到原文表示仍需人工复核，并应在附录B列明。"
+)
+APPENDIX_LINK_NOTE = "附录关系说明：附录A列政策与资料来源；附录B列需人工审核事项。附录A中未明确标注已核验的来源，必须在附录B有对应审核事项。"
 CN_NUMERALS = ("一", "二", "三", "四", "五", "六", "七", "八", "九", "十")
 COMMENTS_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments"
 COMMENTS_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"
@@ -347,6 +352,8 @@ def _source_fields(item):
     date_text = item.get("date") or item.get("publish_date") or item.get("published_at")
     url = item.get("url") or item.get("link") or item.get("source_url") or (source_urls[0] if source_urls else "")
     status = item.get("status") or item.get("verification_status") or item.get("核验状态")
+    source_type = item.get("source_type") or item.get("来源类型")
+    search_provider = item.get("search_provider") or item.get("provider") or item.get("搜索源")
     used_for = item.get("used_for") or item.get("support") or item.get("purpose")
     meta = [value for value in (agency, doc_no, date_text) if value]
     prefix = f"- {name}"
@@ -357,7 +364,14 @@ def _source_fields(item):
         suffix += f"；支撑内容：{used_for}"
     if not url:
         suffix = f"：{status or '待核验原文'}" + suffix
-    return {"prefix": prefix, "url": url or "", "suffix": suffix}
+    return {
+        "prefix": prefix,
+        "url": url or "",
+        "suffix": suffix,
+        "status": status or "待核验原文",
+        "source_type": source_type or "未确认",
+        "search_provider": search_provider or "",
+    }
 
 
 def _source_items(items):
@@ -420,6 +434,13 @@ def _add_source_bullets(doc, items):
         else:
             status = fields["suffix"].lstrip("：").split("；", 1)[0] or "待核验原文"
             _add_run(p, f"{status}；")
+
+        p = doc.add_paragraph()
+        _set_paragraph_format(p)
+        status_text = f"来源类型：{fields['source_type']}；核验状态：{fields['status']}"
+        if fields["search_provider"]:
+            status_text += f"；搜索源：{fields['search_provider']}"
+        _add_run(p, status_text)
 
         support = fields["suffix"].split("支撑内容：", 1)[1] if "支撑内容：" in fields["suffix"] else ""
         if support:
@@ -570,6 +591,8 @@ def _append_review_appendix(doc, sections: dict):
 
     _page_break(doc)
     _heading(doc, "附录A：政策与资料来源链接", 1)
+    _add_paragraphs(doc, SOURCE_STATUS_NOTE, review_comment=False)
+    _add_paragraphs(doc, APPENDIX_LINK_NOTE, review_comment=False)
     if sources:
         _add_source_bullets(doc, sources)
     else:
@@ -578,6 +601,7 @@ def _append_review_appendix(doc, sections: dict):
     _page_break(doc)
     _heading(doc, "附录B：需人工审核事项", 1)
     _add_paragraphs(doc, REVIEW_COMMENT_NOTE, review_comment=False)
+    _add_paragraphs(doc, APPENDIX_LINK_NOTE, review_comment=False)
     if review_notes:
         _add_numbered_review_items(doc, review_notes)
     else:
@@ -609,7 +633,7 @@ def _source_is_verified(item) -> bool:
     if not isinstance(item, dict):
         return False
     status = str(item.get("status") or item.get("verification_status") or item.get("核验状态") or "").strip()
-    return status in {"已核验原文", "人工已核验原文", "已核验官网原文"}
+    return status == "已核验原文"
 
 
 def _source_review_tokens(item):

@@ -1,0 +1,60 @@
+{
+  "id": "baidu-search",
+  "activation": {
+    "onStartup": false
+  },
+  "name": "Baidu Search",
+  "description": "Baidu Qianfan AI Search tool for Chinese policy source lookup.",
+  "setup": {
+    "providers": [
+      {
+        "id": "baidu-search",
+        "authMethods": [
+          "api-key"
+        ],
+        "envVars": [
+          "BAIDU_APPBUILDER_KEY"
+        ]
+      }
+    ]
+  },
+  "providerAuthEnvVars": {
+    "baidu-search": [
+      "BAIDU_APPBUILDER_KEY"
+    ]
+  },
+  "uiHints": {
+    "baiduSearch.apiKey": {
+      "label": "Baidu AppBuilder API Key",
+      "help": "Baidu Qianfan AppBuilder API key for AI Search (fallback: BAIDU_APPBUILDER_KEY env var).",
+      "sensitive": true,
+      "placeholder": "bce-v3/..."
+    }
+  },
+  "contracts": {
+    "tools": [
+      "baidu_search"
+    ]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "baiduSearch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "apiKey": {
+            "type": [
+              "string",
+              "object"
+            ]
+          },
+          "baseUrl": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

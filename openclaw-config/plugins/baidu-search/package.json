@@ -1,0 +1,12 @@
+{
+  "name": "openclaw-baidu-search-plugin",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "main": "index.js",
+  "openclaw": {
+    "extensions": [
+      "./index.js"
+    ]
+  }
+}

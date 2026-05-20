@@ -27,14 +27,16 @@ description: |-
 | 1. 作业流程 | `references/workflow/proposal-generation-playbook.md` | 开始任务时读取，用来控制需求解析、历史资产复用、内容映射、质检修正等整体步骤 |
 | 2. 交付物类型路由 | `references/routing/proposal-routing.md` | 需求解析后读取，用来判断本次材料属于项目汇报、解决方案、招投标方案等哪类交付物 |
 | 3. 项目汇报结构 | `references/structures/project-report.md` | 路由结果为 `project_report` 且当前阶段继续处理时读取，用来确定项目汇报稿的标题、章节和写作要求 |
-| 4. 政策/资料/案例检索 | `references/search/policy-web-search.md` | 需要引用外部政策、资料、数据或案例时读取，用来生成检索词、筛选来源和标注核验状态 |
-| 5. 顾问写作与润色规则 | `references/writing/consultant-writing-rules.md` | 生成内容和润色时读取，用来控制项目材料表达方式，避免套话、空话和 AI 腔 |
-| 6. 质量检查路由 | `references/routing/quality-routing.md` | 输出前读取，用来根据交付物类型选择对应质检清单 |
+| 4. 政策/资料/案例检索 | `references/search/policy-web-search.md` | 需要引用外部政策、资料、数据或案例时读取，用来生成检索词、筛选来源和记录检索过程 |
+| 5. 搜索源接入 | `references/search/search-provider-integration.md` | 需要多源联网检索时读取，用来确定 Tavily、百度等搜索源的调用顺序、不可用处理和记录方式 |
+| 6. 政策来源核验 | `references/search/policy-source-verification.md` | 检索到来源后读取，用来判断是否可标记为已核验原文，以及是否需要进入人工审核事项 |
+| 7. 顾问写作与润色规则 | `references/writing/consultant-writing-rules.md` | 生成内容和润色时读取，用来控制项目材料表达方式，避免套话、空话和 AI 腔 |
+| 8. 质量检查路由 | `references/routing/quality-routing.md` | 输出前读取，用来根据交付物类型选择对应质检清单 |
 
 执行原则：
 
 - 生成项目汇报稿前，必须先按 `workflow/proposal-generation-playbook.md` 完成需求解析、历史资产复用、必要检索、内容映射和交付物判断。
-- 需要引用政策、行业资料、统计数据、标准规范或成功案例时，必须遵守 `search/policy-web-search.md`。
+- 需要引用政策、行业资料、统计数据、标准规范或成功案例时，必须遵守 `search/policy-web-search.md`、`search/search-provider-integration.md` 和 `search/policy-source-verification.md`。
 - 先读取 `routing/proposal-routing.md` 判断本次交付物类型；当前阶段只继续处理 `project_report`，其他类型先追问或说明暂不展开。
 - 当前阶段项目汇报结构只按 `structures/project-report.md`，Word 输出通过 `scripts/generate_docx.py` 完成。
 - 生成内容和润色时，按 `writing/consultant-writing-rules.md` 控制风格。
