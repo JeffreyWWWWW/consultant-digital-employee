@@ -4,7 +4,7 @@
 
 当前可用清单：
 
-- `project_report`：读取 `../quality/project-report-checklist.md`
+- `construction_plan`：读取 `../quality/construction-plan-checklist.md`
 
 如果没有对应的质量检查清单，停止当前输出流程，先追问或说明当前交付物暂不支持。
 

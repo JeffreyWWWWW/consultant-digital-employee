@@ -30,12 +30,12 @@ REVIEW_MARKERS = (
     "模型生成",
     "模型建议",
 )
-REVIEW_COMMENT_NOTE = "文中批注内容为需人工核对事项，请结合原始材料、政策原文和客户确认结果复核。"
+REVIEW_COMMENT_NOTE = "文中批注内容为需人工核对事项，请结合原始材料、来源原文和客户确认结果复核。"
 SOURCE_STATUS_NOTE = (
     "来源核验状态说明：已核验原文表示模型已打开并确认原文页面且要素匹配，可作为已核验依据；"
     "待核验原文、待联网核验、未找到原文表示仍需人工复核，并应在附录B列明。"
 )
-APPENDIX_LINK_NOTE = "附录关系说明：附录A列政策与资料来源；附录B列需人工审核事项。附录A中未明确标注已核验的来源，必须在附录B有对应审核事项。"
+APPENDIX_LINK_NOTE = "附录关系说明：附录A列资料来源；附录B列需人工审核事项。附录A中未明确标注已核验的来源，必须在附录B有对应审核事项。"
 CN_NUMERALS = ("一", "二", "三", "四", "五", "六", "七", "八", "九", "十")
 COMMENTS_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments"
 COMMENTS_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"
@@ -136,7 +136,7 @@ def _normalize_inner_numbering(text: str) -> str:
     if not match:
         return text
     title = match.group(2).strip()
-    if title in {"项目建设的依据", "建设目标", "建设内容"}:
+    if title in {"建设背景", "建设目标", "需求分析", "建设内容", "建设成效", "投资估算"}:
         return text
     return f"（{match.group(1)}）{title}"
 
@@ -188,6 +188,16 @@ def _review_comment_text(text: str) -> str:
     if markers:
         return "需人工核对：文本包含审核标记（" + "、".join(markers) + "）。"
     return "需人工核对：该内容需结合原始材料和来源依据复核。"
+
+
+def _appendix_relation_note(include_sources: bool, include_review_notes: bool) -> str:
+    if include_sources and include_review_notes:
+        return APPENDIX_LINK_NOTE
+    if include_sources:
+        return "附录关系说明：附录A列资料来源，用于人工复核来源和引用关系。"
+    if include_review_notes:
+        return "附录关系说明：附录B列需人工审核事项，用于提示人工核对待确认、待补充或待测算内容。"
+    return ""
 
 
 def _add_text_run(p, text: str, review_comment: bool = True):
@@ -245,19 +255,21 @@ def _clean_title(project_name: str) -> str:
     return name
 
 
-def _project_report_title(project_name: str, customer_name: str = "") -> str:
+def _construction_plan_title(project_name: str, customer_name: str = "") -> str:
     name = _clean_title(project_name)
     customer = (customer_name or "").strip(" 　《》")
-    if "汇报" in name:
+    if "建设方案" in name:
         if customer and customer not in name:
             return f"{customer}{name}"
         return name
-    if name.endswith("建设项目"):
-        report_name = f"{name}汇报"
-    elif name.endswith("建设"):
-        report_name = f"{name}项目汇报"
+    if name.endswith("建设"):
+        report_name = f"{name}方案"
+    elif name.endswith("项目"):
+        report_name = f"{name}建设方案"
+    elif name.endswith("方案"):
+        report_name = name
     else:
-        report_name = f"{name}建设项目汇报"
+        report_name = f"{name}建设方案"
     if customer and customer not in report_name:
         return f"{customer}{report_name}"
     return report_name
@@ -270,8 +282,8 @@ def _safe_filename(text: str) -> str:
 
 def _default_output_path(region: str, project_name: str, customer_name: str = "") -> str:
     today = date.today().strftime("%Y%m%d")
-    report_name = _safe_filename(_project_report_title(project_name, customer_name))
-    return f"{report_name}_{today}.docx"
+    plan_name = _safe_filename(_construction_plan_title(project_name, customer_name))
+    return f"{plan_name}_{today}.docx"
 
 
 def _normalize_output_path(output_path: str, region: str, project_name: str, customer_name: str = "") -> str:
@@ -282,8 +294,8 @@ def _normalize_output_path(output_path: str, region: str, project_name: str, cus
     return os.path.join(output_dir, filename)
 
 
-def _project_contents(sections: dict):
-    return sections.get("project_contents") or sections.get("modules") or []
+def _construction_contents(sections: dict):
+    return sections.get("project_contents") or []
 
 
 def _format_source_item(item) -> str:
@@ -580,32 +592,33 @@ def _comment_review_notes_in_body(doc, review_notes, sources=None):
     return comment_count
 
 
-def _append_review_appendix(doc, sections: dict):
+def _append_review_appendix(doc, sections: dict, include_sources: bool = True, include_review_notes: bool = True):
     sources = (
-        sections.get("policy_sources")
+        sections.get("sources")
         or sections.get("source_links")
-        or sections.get("sources")
         or sections.get("source_note")
     )
     review_notes = sections.get("review_notes") or []
 
-    _page_break(doc)
-    _heading(doc, "附录A：政策与资料来源链接", 1)
-    _add_paragraphs(doc, SOURCE_STATUS_NOTE, review_comment=False)
-    _add_paragraphs(doc, APPENDIX_LINK_NOTE, review_comment=False)
-    if sources:
-        _add_source_bullets(doc, sources)
-    else:
-        _add_paragraphs(doc, "【待补充政策与资料来源链接】")
+    if include_sources:
+        _page_break(doc)
+        _heading(doc, "附录A：资料来源链接", 1)
+        _add_paragraphs(doc, SOURCE_STATUS_NOTE, review_comment=False)
+        _add_paragraphs(doc, _appendix_relation_note(include_sources, include_review_notes), review_comment=False)
+        if sources:
+            _add_source_bullets(doc, sources)
+        else:
+            _add_paragraphs(doc, "【待补充资料来源链接】")
 
-    _page_break(doc)
-    _heading(doc, "附录B：需人工审核事项", 1)
-    _add_paragraphs(doc, REVIEW_COMMENT_NOTE, review_comment=False)
-    _add_paragraphs(doc, APPENDIX_LINK_NOTE, review_comment=False)
-    if review_notes:
-        _add_numbered_review_items(doc, review_notes)
-    else:
-        _add_paragraphs(doc, "【待补充需人工审核事项】")
+    if include_review_notes:
+        _page_break(doc)
+        _heading(doc, "附录B：需人工审核事项", 1)
+        _add_paragraphs(doc, REVIEW_COMMENT_NOTE, review_comment=False)
+        _add_paragraphs(doc, _appendix_relation_note(include_sources, include_review_notes), review_comment=False)
+        if review_notes:
+            _add_numbered_review_items(doc, review_notes)
+        else:
+            _add_paragraphs(doc, "【待补充需人工审核事项】")
 
 
 def _validate_source_appendix_items(sources):
@@ -620,7 +633,7 @@ def _validate_source_appendix_items(sources):
         status = item.get("status") or item.get("verification_status") or item.get("核验状态")
         used_for = item.get("used_for") or item.get("support") or item.get("purpose")
         if not name:
-            issues.append(f"附录A第{idx}项缺少政策或资料名称")
+            issues.append(f"附录A第{idx}项缺少来源名称")
         if not url and not status:
             issues.append(f"附录A第{idx}项缺少原文链接或核验状态")
         if not used_for:
@@ -765,9 +778,8 @@ def build_docx(data: dict, output_path: str = None) -> str:
     region = data.get("region", "")
     sections = data.get("sections", {})
     sources = (
-        sections.get("policy_sources")
+        sections.get("sources")
         or sections.get("source_links")
-        or sections.get("sources")
         or sections.get("source_note")
     )
     review_notes = sections.get("review_notes") or []
@@ -784,16 +796,27 @@ def build_docx(data: dict, output_path: str = None) -> str:
     title_p = doc.add_paragraph()
     title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     _set_paragraph_format(title_p, first_line_indent=False, space_after=18)
-    _add_run(title_p, _project_report_title(project_name, customer_name), FONT_XIAOBIAOSONG, 22, True)
+    _add_run(title_p, _construction_plan_title(project_name, customer_name), FONT_XIAOBIAOSONG, 22, True)
 
-    _heading(doc, "一、项目建设的依据", 1)
-    _add_paragraphs(doc, sections.get("project_basis") or sections.get("policy_background") or "【待补充项目建设依据】")
+    _heading(doc, "一、建设背景", 1)
+    _add_paragraphs(
+        doc,
+        sections.get("construction_background")
+        or "【待补充建设背景】",
+    )
 
     _heading(doc, "二、建设目标", 1)
-    _add_paragraphs(doc, sections.get("project_goals") or sections.get("overall_goal") or "【待补充建设目标】")
+    _add_paragraphs(doc, sections.get("project_goals") or "【待补充建设目标】")
 
-    _heading(doc, "三、建设内容", 1)
-    contents = _project_contents(sections)
+    _heading(doc, "三、需求分析", 1)
+    _add_paragraphs(
+        doc,
+        sections.get("demand_analysis")
+        or "【待补充需求分析】",
+    )
+
+    _heading(doc, "四、建设内容", 1)
+    contents = _construction_contents(sections)
     if isinstance(contents, list) and contents:
         for idx, item in enumerate(contents, start=1):
             if isinstance(item, dict):
@@ -807,6 +830,20 @@ def build_docx(data: dict, output_path: str = None) -> str:
     else:
         _add_paragraphs(doc, contents or "【待补充建设内容】")
 
+    _heading(doc, "五、建设成效", 1)
+    _add_paragraphs(
+        doc,
+        sections.get("construction_effects")
+        or "【待补充建设成效】",
+    )
+
+    _heading(doc, "六、投资估算", 1)
+    _add_paragraphs(
+        doc,
+        sections.get("investment_estimate")
+        or "【待补充投资估算】",
+    )
+
     _validate_source_appendix_items(sources)
     _validate_source_review_coverage(sources, review_notes)
     _comment_inline_sources_in_body(doc, sources)
@@ -819,7 +856,13 @@ def build_docx(data: dict, output_path: str = None) -> str:
             f"正文批注 {total_comment_count} 条。请检查 review_notes、target/match_text 和自动批注来源。"
         )
 
-    _append_review_appendix(doc, sections)
+    if sources or review_notes:
+        _append_review_appendix(
+            doc,
+            sections,
+            include_sources=bool(sources),
+            include_review_notes=bool(review_notes),
+        )
 
     output_path = _normalize_output_path(output_path, region, project_name, customer_name)
 

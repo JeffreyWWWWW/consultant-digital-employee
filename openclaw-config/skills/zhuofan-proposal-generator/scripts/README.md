@@ -1,11 +1,11 @@
 # scripts 目录说明
 
-当前阶段只生成项目需求阶段的项目汇报 Word。
+当前阶段只生成项目需求阶段的建设方案 Word。
 
 ## 文件职责
 
 - `generate_docx.py`：Word 输出入口。负责读取 JSON、校验 `document_type`，并分发到对应生成器。
-- `docx_generators/project_report.py`：项目汇报 Word 生成器。负责标题、章节、版式和文件名规则。
+- `docx_generators/construction_plan.py`：建设方案 Word 生成器。负责标题、章节、版式和文件名规则。
 
 ## 设计说明
 
@@ -18,7 +18,7 @@
 
 当前已启用的生成器：
 
-- `project_report` -> `docx_generators/project_report.py`
+- `construction_plan` -> `docx_generators/construction_plan.py`
 
 ## 当前命令
 
@@ -30,4 +30,4 @@ python scripts/generate_docx.py --schema
 
 ## 字体说明
 
-项目汇报 Word 采用固定字体规范：标题 `方正小标宋_GBK` 二号，正文 `仿宋_GB2312` 三号。
+建设方案 Word 采用固定字体规范：标题 `方正小标宋_GBK` 二号，正文 `仿宋_GB2312` 三号。

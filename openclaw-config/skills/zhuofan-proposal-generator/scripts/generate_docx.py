@@ -1,7 +1,7 @@
 """
-ZX-01 项目汇报 Word 生成入口。
+ZX-01 建设方案 Word 生成入口。
 
-当前阶段只支持 document_type=project_report。
+当前阶段只支持 document_type=construction_plan。
 
 用法：
   python scripts/generate_docx.py --json proposal.json
@@ -18,34 +18,37 @@ import time
 SCHEMA = """
 输入 JSON 结构：
 {
-  "document_type": "project_report",
+  "document_type": "construction_plan",
   "project_name": "项目名称",
   "customer_name": "客户单位名称",
   "region": "区域",
   "sections": {
-    "project_basis": "项目建设的依据，可多段，用 \\n 分隔",
+    "construction_background": "建设背景，可多段，用 \\n 分隔",
     "project_goals": "建设目标，可多段，用 \\n 分隔",
+    "demand_analysis": "需求分析，可多段，用 \\n 分隔",
     "project_contents": [
       {
         "name": "建设事项名称",
         "content": "建设动作、服务对象、业务价值"
       }
     ],
-    "policy_sources": [
+    "construction_effects": "建设成效，可多段，用 \\n 分隔",
+    "investment_estimate": "投资估算，可多段，用 \\n 分隔",
+    "sources": [
       {
-        "name": "政策或资料名称",
-        "agency": "发文单位或来源机构",
+        "name": "来源名称",
+        "agency": "发布单位或来源机构",
         "doc_no": "文号（如有）",
         "date": "发布时间（如有）",
         "url": "原文链接；无法核验时留空并填写 status",
-        "source_type": "官网原文/政府公开平台/政府转载/媒体转载/线索页/未确认",
+        "source_type": "官网原文/政府公开平台/机构原文/主体公开页面/政府转载/媒体转载/线索页/未确认",
         "status": "已核验原文/待核验原文/待联网核验/未找到原文",
-        "verification_status": "兼容字段，同 status",
+        "verification_status": "核验状态，同 status",
         "used_for": "支撑的正文内容",
-        "query": "按 references/search/policy-web-search.md 实际执行的检索词",
+        "query": "按 references/search/source-web-search.md 实际执行的检索词",
         "search_provider": "Tavily/百度/Tavily+百度/用户提供",
-        "source_names": ["兼容 policy-web-search.md 的来源名称数组"],
-        "source_urls": ["兼容 policy-web-search.md 的原文链接数组"]
+        "source_names": ["source-web-search.md 的来源名称数组"],
+        "source_urls": ["source-web-search.md 的原文链接数组"]
       }
     ],
     "review_notes": [
@@ -58,15 +61,10 @@ SCHEMA = """
     "source_note": "来源说明"
   }
 }
-
-兼容字段：
-- sections.policy_background 可作为 project_basis 的兼容输入。
-- sections.overall_goal 可作为 project_goals 的兼容输入。
-- sections.modules 可作为 project_contents 的兼容输入。
 """
 
 
-SUPPORTED_TYPES = {"project_report"}
+SUPPORTED_TYPES = {"construction_plan"}
 
 
 def _load_json(path: str) -> dict:
@@ -74,35 +72,35 @@ def _load_json(path: str) -> dict:
         return json.load(f)
 
 
-def _validate_project_report(data: dict) -> None:
+def _validate_construction_plan(data: dict) -> None:
     doc_type = (data.get("document_type") or "").strip()
     if not doc_type:
         raise ValueError("缺少必填字段：document_type")
     if doc_type not in SUPPORTED_TYPES:
         raise ValueError(
-            f"当前阶段只支持 document_type=project_report，不支持 {doc_type!r}。"
+            f"当前阶段只支持 document_type=construction_plan，不支持 {doc_type!r}。"
         )
 
     missing = [key for key in ("project_name", "customer_name", "region") if not data.get(key)]
     if missing:
         raise ValueError("缺少必填字段：" + ", ".join(missing))
 
-    data["document_type"] = "project_report"
+    data["document_type"] = "construction_plan"
     data.setdefault("sections", {})
 
 
 def generate_docx(json_path: str, output_path: str = None) -> str:
     data = _load_json(json_path)
-    _validate_project_report(data)
+    _validate_construction_plan(data)
 
-    from docx_generators.project_report import build_docx
+    from docx_generators.construction_plan import build_docx
 
     return build_docx(data, output_path)
 
 
 def main() -> None:
     start_time = time.perf_counter()
-    parser = argparse.ArgumentParser(description="ZX-01 项目汇报 Word 生成器")
+    parser = argparse.ArgumentParser(description="ZX-01 建设方案 Word 生成器")
     parser.add_argument("--json", default=None, help="输入 JSON 文件路径")
     parser.add_argument("--output", default=None, help="输出 .docx 路径（可选）")
     parser.add_argument("--schema", action="store_true", help="打印输入 JSON 结构说明")
