@@ -3,6 +3,7 @@
 
 # OpenClaw runtime data
 .openclaw/
+.codex-tools/
 
 # Python/runtime cache
 __pycache__/
