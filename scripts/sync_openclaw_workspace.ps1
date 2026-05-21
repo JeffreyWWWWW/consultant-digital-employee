@@ -25,26 +25,6 @@ function Invoke-RobocopyMirror {
     $global:LASTEXITCODE = 0
 }
 
-function Copy-RootFile {
-    param(
-        [Parameter(Mandatory = $true)][string]$Name,
-        [Parameter(Mandatory = $true)][string]$SourceRoot,
-        [Parameter(Mandatory = $true)][string]$DestinationRoot,
-        [string]$BackupRoot
-    )
-
-    $source = Join-Path $SourceRoot $Name
-    $destination = Join-Path $DestinationRoot $Name
-    if (-not (Test-Path -LiteralPath $source)) {
-        throw "Missing source file: $source"
-    }
-
-    if ($BackupRoot -and (Test-Path -LiteralPath $destination)) {
-        Copy-Item -LiteralPath $destination -Destination (Join-Path $BackupRoot $Name) -Force
-    }
-    Copy-Item -LiteralPath $source -Destination $destination -Force
-}
-
 function Restart-OpenClawGateway {
     $gatewayCmd = Join-Path $env:USERPROFILE ".openclaw\gateway.cmd"
     if (-not (Test-Path -LiteralPath $gatewayCmd)) {
@@ -71,26 +51,14 @@ if (-not $NoBackup) {
     $backupRoot = Join-Path $env:USERPROFILE ".openclaw\backups\workspace-sync-$stamp"
     New-Item -ItemType Directory -Force -Path $backupRoot | Out-Null
 
-    foreach ($name in @("AGENTS.md", "IDENTITY.md", "SOUL.md", "USER.md")) {
-        $existing = Join-Path $OpenClawWorkspace $name
-        if (Test-Path -LiteralPath $existing) {
-            Copy-Item -LiteralPath $existing -Destination (Join-Path $backupRoot $name) -Force
-        }
+    robocopy $OpenClawWorkspace $backupRoot /E /NFL /NDL /NJH /NJS /NP | Out-Null
+    if ($LASTEXITCODE -gt 7) {
+        throw "backup failed ($LASTEXITCODE): $OpenClawWorkspace -> $backupRoot"
     }
-    foreach ($dir in @("skills", "plugins")) {
-        $existing = Join-Path $OpenClawWorkspace $dir
-        if (Test-Path -LiteralPath $existing) {
-            Copy-Item -LiteralPath $existing -Destination (Join-Path $backupRoot $dir) -Recurse -Force
-        }
-    }
+    $global:LASTEXITCODE = 0
 }
 
-foreach ($name in @("AGENTS.md", "IDENTITY.md", "SOUL.md", "USER.md")) {
-    Copy-RootFile -Name $name -SourceRoot $configRoot -DestinationRoot $OpenClawWorkspace -BackupRoot $backupRoot
-}
-
-Invoke-RobocopyMirror -Source (Join-Path $configRoot "skills") -Destination (Join-Path $OpenClawWorkspace "skills")
-Invoke-RobocopyMirror -Source (Join-Path $configRoot "plugins") -Destination (Join-Path $OpenClawWorkspace "plugins")
+Invoke-RobocopyMirror -Source $configRoot -Destination $OpenClawWorkspace
 
 if ($RestartGateway) {
     Restart-OpenClawGateway
