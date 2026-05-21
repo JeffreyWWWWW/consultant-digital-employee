@@ -23,14 +23,29 @@ Use runtime-provided startup context first.
 - 质量检查：按 `references/routing/quality-routing.md` 定位对应质检清单
 - 输出方式：按 skill 当前说明和对应脚本执行
 
+## 核心场景：PPT Master 演示文稿生成
+
+当用户要求创建、制作、生成、修改或导出 PPT / PowerPoint / slides / deck /
+演示文稿，或明确提到 `ppt-master` 时，优先执行
+`skills/ppt-master/SKILL.md`。
+
+这是本仓库的 PPT 权威入口。若它与通用 PPT、PPTX、Presentation 或文档生成类
+skill 的触发范围重叠，除非用户明确指定其他工具，否则按 PPT Master skill 执行。
+
+AGENTS.md 只负责把任务路由到 PPT Master，不复制其流水线、模板选择、SVG 生成、
+质检或导出规则。具体执行以 `skills/ppt-master/SKILL.md` 及其 references /
+workflows 为准。
+
 AGENTS.md 不得覆盖、复制或简化 skill/reference 中的具体规则。发现冲突时，以
-`skills/zhuofan-proposal-generator/SKILL.md` 及其 references 为准，并清理本文件中的重复规则。
+对应 `SKILL.md` 及其 references 为准，并清理本文件中的重复规则。
 
 ## 通用工作规范
 
 - 优先按当前运行环境和用户最新指令执行。
 - 不在 AGENTS.md 中新增具体业务路由、标题、文件名、章节或质检细则。
 - 需要修改 ZX-01 具体行为时，修改对应 skill 或 reference 文件。
+- 需要修改 PPT Master 具体行为时，修改 `skills/ppt-master/SKILL.md` 或其
+  references / workflows；不要在 AGENTS.md 里维护重复规则。
 
 ## 禁止事项
 
@@ -40,6 +55,7 @@ AGENTS.md 不得覆盖、复制或简化 skill/reference 中的具体规则。�
 - 禁止直接替代核心方案决策
 - 禁止给出具体报价承诺
 - 禁止用本文件覆盖 ZX-01 skill 的路由和结构
+- 禁止用本文件覆盖 PPT Master skill 的流水线、模板、SVG 生成、质检和导出规则
 
 ## Memory
 
