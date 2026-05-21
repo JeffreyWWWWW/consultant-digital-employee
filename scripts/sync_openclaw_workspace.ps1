@@ -10,7 +10,8 @@ $ErrorActionPreference = "Stop"
 function Invoke-RobocopyMirror {
     param(
         [Parameter(Mandatory = $true)][string]$Source,
-        [Parameter(Mandatory = $true)][string]$Destination
+        [Parameter(Mandatory = $true)][string]$Destination,
+        [string[]]$PreserveDirectories = @()
     )
 
     if (-not (Test-Path -LiteralPath $Source)) {
@@ -18,7 +19,13 @@ function Invoke-RobocopyMirror {
     }
 
     New-Item -ItemType Directory -Force -Path $Destination | Out-Null
-    robocopy $Source $Destination /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
+    $robocopyArgs = @($Source, $Destination, "/MIR", "/NFL", "/NDL", "/NJH", "/NJS", "/NP")
+    if ($PreserveDirectories.Count -gt 0) {
+        $robocopyArgs += "/XD"
+        $robocopyArgs += $PreserveDirectories
+    }
+
+    robocopy @robocopyArgs | Out-Null
     if ($LASTEXITCODE -gt 7) {
         throw "robocopy failed ($LASTEXITCODE): $Source -> $Destination"
     }
@@ -58,7 +65,7 @@ if (-not $NoBackup) {
     $global:LASTEXITCODE = 0
 }
 
-Invoke-RobocopyMirror -Source $configRoot -Destination $OpenClawWorkspace
+Invoke-RobocopyMirror -Source $configRoot -Destination $OpenClawWorkspace -PreserveDirectories @(".git", ".openclaw", "output")
 
 if ($RestartGateway) {
     Restart-OpenClawGateway
