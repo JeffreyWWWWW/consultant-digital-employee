@@ -1,0 +1,4 @@
+[submodule "openclaw-config/skills/ppt-master"]
+	path = openclaw-config/skills/ppt-master
+	url = https://github.com/JeffreyWWWWW/ppt-master.git
+	branch = openclaw-skill

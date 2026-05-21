@@ -38,6 +38,40 @@
 ## 核心 Skill
 
 - `openclaw-config/skills/zhuofan-proposal-generator/`：ZX-01 智能方案初稿生成。
+- `openclaw-config/skills/ppt-master/`：PPT Master OpenClaw Skill，以 submodule 方式跟踪 `JeffreyWWWWW/ppt-master` 的 `openclaw-skill` 分支。
+
+## 更新 PPT Master Skill
+
+```powershell
+.\scripts\update_ppt_master_skill.ps1
+```
+
+脚本会更新 `openclaw-config\skills\ppt-master` submodule，并在主仓库记录新的 submodule 版本；如果没有变化，不会创建提交。
+
+## PPT Master 维护约定
+
+`D:\repository\ppt-master` 是 PPT Master 的唯一维护源，负责跟官方 `hugohe3/ppt-master` 同步、保留完整仓库结构，并维护本项目需要的定制内容。`openclaw-config\skills\ppt-master` 只是本项目消费的 submodule，不直接手改。
+
+推荐流程：
+
+```powershell
+cd D:\repository\ppt-master
+git switch openclaw-custom
+
+# 修改 skills\ppt-master 下的文件后提交
+git add skills\ppt-master
+git commit -m "Modify ppt-master skill"
+git push origin openclaw-custom
+
+# 导出 OpenClaw 使用的 skill-only 分支
+git branch -D openclaw-skill
+git subtree split --prefix=skills/ppt-master -b openclaw-skill
+git push -f origin openclaw-skill
+
+# 回本项目更新 submodule 指针
+cd D:\repository\consultant-digital-employee
+.\scripts\update_ppt_master_skill.ps1
+```
 
 ## Word 输出脚本
 
