@@ -17,6 +17,14 @@ venv/
 # Generated outputs
 output/*
 !output/.gitignore
+!output/materials/
+!output/materials/.gitignore
+!output/presentations/
+!output/presentations/.gitignore
+
+# Temporary/intermediate files
+tmp/*
+!tmp/.gitignore
 
 # Local knowledge base/runtime data
 data/chroma/

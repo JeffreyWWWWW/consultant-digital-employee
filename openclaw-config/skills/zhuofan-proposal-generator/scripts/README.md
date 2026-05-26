@@ -24,9 +24,12 @@
 
 ```bash
 python scripts/generate_docx.py --json proposal.json
-python scripts/generate_docx.py --json proposal.json --output output.docx
+python scripts/generate_docx.py --json proposal.json --output output/materials
 python scripts/generate_docx.py --schema
 ```
+
+不传 `--output` 时，最终 Word 成品默认输出到仓库根目录 `output/materials/`。演示文稿成品统一放到 `output/presentations/`。
+临时 JSON、过程日志和其他中间产物统一放到仓库根目录 `tmp/`。
 
 ## 字体说明
 

@@ -92,6 +92,8 @@
 
 进入输出环节前，至少形成以下结构：
 
+中间 JSON、检索记录、质检记录和过程日志统一放到仓库根目录 `tmp/`，不得散落在各流程目录；最终交付文件按类型放到 `output/materials/` 或 `output/presentations/`。
+
 ```json
 {
   "document_type": "",

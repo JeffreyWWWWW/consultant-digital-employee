@@ -1,11 +1,11 @@
----
+﻿---
 name: zhuofan-proposal-generator
 description: |-
-  智能方案初稿生成（ZX-01）。用于把项目需求、会议纪要、沟通材料、历史方案参考等加工成可人工复核的方案材料初稿。
+  智能方案初稿生成。用于把项目需求、会议纪要、沟通材料、历史方案参考等加工成可人工复核的方案材料初稿。
   按“用户需求解析 -> 历史资产复用 -> 必要资料检索 -> 内容映射 -> 专家化写作 -> 质检修正 -> 输出交付”的流程，生成对应交付物类型的方案材料。
 ---
 
-# 智能方案初稿生成（ZX-01）
+# 智能方案初稿生成
 
 本 Skill 用于把用户需求、历史方案资产和必要检索资料加工成对应交付物类型的方案材料初稿。它服务于顾问在需求沟通、内部评审、立项支撑或客户沟通前快速形成建议型材料，不替代核心方案决策。
 
@@ -161,10 +161,12 @@ description: |-
 
 材料内容生成完毕后，默认输出 `.docx`，不要在对话中贴全文。
 
+统一交付目录：所有最终 Word 成品必须输出到仓库根目录 `output/materials/`。脚本不传 `--output` 时默认使用该目录；如显式传参，也应传入 `output/materials/` 下的路径或目录。
+
 生成方式：
 
 ```bash
-python scripts/generate_docx.py --json /tmp/proposal_data.json --output output.docx
+python scripts/generate_docx.py --json tmp/proposal_data.json
 ```
 
 脚本入口：`scripts/generate_docx.py`。当前阶段只支持 `construction_plan`。
@@ -177,7 +179,7 @@ python scripts/generate_docx.py --json /tmp/proposal_data.json --output output.d
 - 不得输出任何英文内部流程句，包括但不限于 `Now let me...`、`Let me...`、`I need to...`、`I have...`、`The issue is...`、`All targets now match...`。
 - 不得把读取 reference、检索资料、生成 JSON、调用脚本、检查代码、匹配 target、修复引号、排查错误等内部执行过程写入对话。
 - 如需说明进度，只用简短中文，例如“正在检索资料来源”“正在生成 Word 文档”；不要说明“我正在检查代码/target/JSON/脚本”。最终回复只保留交付结果和必要审核提示。
-- 交付前必须确认脚本返回的 `.docx` 文件真实存在；最终回复必须给出文件名或可访问路径，不得只说“已生成”。
+- 交付前必须确认脚本返回的 `.docx` 文件真实存在；最终回复必须给出 `output/materials/` 下的文件名或可访问路径，不得只说“已生成”。
 
 基础格式：
 

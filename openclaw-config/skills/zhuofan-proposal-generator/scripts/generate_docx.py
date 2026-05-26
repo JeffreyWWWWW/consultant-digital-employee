@@ -1,11 +1,11 @@
-"""
-ZX-01 建设方案 Word 生成入口。
+﻿"""
+建设方案 Word 生成入口。
 
 当前阶段只支持 document_type=construction_plan。
 
 用法：
   python scripts/generate_docx.py --json proposal.json
-  python scripts/generate_docx.py --json proposal.json --output output.docx
+  python scripts/generate_docx.py --json proposal.json --output output/materials
   python scripts/generate_docx.py --schema
 """
 
@@ -100,7 +100,7 @@ def generate_docx(json_path: str, output_path: str = None) -> str:
 
 def main() -> None:
     start_time = time.perf_counter()
-    parser = argparse.ArgumentParser(description="ZX-01 建设方案 Word 生成器")
+    parser = argparse.ArgumentParser(description="建设方案 Word 生成器")
     parser.add_argument("--json", default=None, help="输入 JSON 文件路径")
     parser.add_argument("--output", default=None, help="输出 .docx 路径（可选）")
     parser.add_argument("--schema", action="store_true", help="打印输入 JSON 结构说明")

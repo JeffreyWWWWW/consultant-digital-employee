@@ -1,3 +1,7 @@
-# Generated proposal files - do not commit
-*.docx
-*.pdf
+# Generated files - do not commit
+*
+!.gitignore
+!materials/
+!materials/.gitignore
+!presentations/
+!presentations/.gitignore

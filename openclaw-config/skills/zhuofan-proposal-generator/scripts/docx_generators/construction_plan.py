@@ -43,6 +43,7 @@ NS_W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 NS_REL = "http://schemas.openxmlformats.org/package/2006/relationships"
 NS_CT = "http://schemas.openxmlformats.org/package/2006/content-types"
 INLINE_SOURCE_RE = re.compile(r"[（(\[]\s*来源\s*[:：]\s*([^）)\]]+?)\s*[）)\]]")
+DEFAULT_MATERIAL_OUTPUT_DIR = os.path.join("output", "materials")
 
 
 def _set_run_font(run, font_name: str, size_pt: int, bold: bool = False):
@@ -289,8 +290,11 @@ def _default_output_path(region: str, project_name: str, customer_name: str = ""
 def _normalize_output_path(output_path: str, region: str, project_name: str, customer_name: str = "") -> str:
     filename = _default_output_path(region, project_name, customer_name)
     if not output_path:
-        return filename
-    output_dir = os.path.dirname(output_path) or "."
+        return os.path.join(DEFAULT_MATERIAL_OUTPUT_DIR, filename)
+    if output_path.lower().endswith(".docx"):
+        output_dir = os.path.dirname(output_path) or "."
+    else:
+        output_dir = output_path
     return os.path.join(output_dir, filename)
 
 
