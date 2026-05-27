@@ -25,7 +25,7 @@ Use runtime-provided startup context first.
 
 ## 核心场景：PPT Master 演示文稿生成
 
-当用户要求创建、制作、生成、修改或导出演示文稿 / presentation / slides / deck，
+当用户要求创建、制作、生成、修改或导出 PPT / 演示文稿 / presentation / slides / deck，
 或明确提到 `ppt-master` 时，优先执行
 `skills/ppt-master/SKILL.md`。
 
