@@ -45,6 +45,7 @@ AGENTS.md 不得覆盖、复制或简化 skill/reference 中的具体规则。�
 - 所有面向用户交付的正式文件统一放到仓库根目录 `output/`，并按类型分开：文字材料放 `output/materials/`，演示文稿放 `output/presentations/`。
 - Word、PDF、Excel、压缩包等文字材料成品完成后，直接交付文件给用户；最后回复必须给出 `output/materials/` 下的文件名或路径。
 - 演示文稿、slides、deck 等成品完成后，直接交付文件给用户；最后回复必须给出 `output/presentations/` 下的文件名或路径。
+- 发送 `MEDIA:` 文件前必须确认该绝对路径真实存在；如果演示文稿成品生成在 `output/` 根目录，先移动或复制到 `output/presentations/`，再使用实际存在的 `output/presentations/` 绝对路径发送，禁止凭记忆拼接路径。
 - 临时文件和中间产物统一放到仓库根目录 `tmp/`，包括临时 JSON、渲染预览、源码 SVG、过程日志等；不要散落在各流程目录。
 - `output/` 只放最终交付文件，不放临时文件和过程文件。
 - 不在 AGENTS.md 中新增具体业务路由、标题、文件名、章节或质检细则。

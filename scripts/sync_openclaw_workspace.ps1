@@ -45,6 +45,33 @@ function Restart-OpenClawGateway {
     Start-Process -FilePath $gatewayCmd -WindowStyle Hidden
 }
 
+function Import-RepoEnv {
+    param(
+        [Parameter(Mandatory = $true)][string]$EnvFile
+    )
+
+    if (-not (Test-Path -LiteralPath $EnvFile)) {
+        return
+    }
+
+    Get-Content -Encoding UTF8 -LiteralPath $EnvFile |
+        ForEach-Object {
+            $line = $_.Trim()
+            if (-not $line -or $line.StartsWith("#")) {
+                return
+            }
+
+            $parts = $line -split "=", 2
+            if ($parts.Count -ne 2 -or -not $parts[0].Trim()) {
+                return
+            }
+
+            $name = $parts[0].Trim()
+            $value = $parts[1].Trim()
+            Set-Item -Path "Env:$name" -Value $value
+        }
+}
+
 $configRoot = Join-Path $RepoRoot "openclaw-config"
 if (-not (Test-Path -LiteralPath $configRoot)) {
     throw "Missing openclaw-config directory: $configRoot"
@@ -68,6 +95,7 @@ if (-not $NoBackup) {
 Invoke-RobocopyMirror -Source $configRoot -Destination $OpenClawWorkspace -PreserveDirectories @(".git", ".openclaw", "output")
 
 if ($RestartGateway) {
+    Import-RepoEnv -EnvFile (Join-Path $RepoRoot ".env")
     Restart-OpenClawGateway
 }
 

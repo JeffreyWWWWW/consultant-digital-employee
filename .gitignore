@@ -1,5 +1,8 @@
 # Local config
 .claude/
+.env
+.env.local
+.env.*.local
 
 # OpenClaw runtime data
 .openclaw/
